@@ -1,0 +1,93 @@
+# This is the main configuration file for ByteBans.
+
+server:
+  # Unique server name in a network
+  # Ignored in SQLite mode.
+  # "*" = global bans (applies to all servers) even when using MySQL
+  name: "*"
+
+
+storage:
+  # Storage type to use
+  # Valid values: mysql, sqlite
+  # Default: mysql
+  type: mysql
+
+  table_prefix: "bytebans_"
+
+  sqlite:
+    # Database file to use
+    # Ignored in MySQL mode.
+    # Default: database.db
+    file: "database.db"
+
+  # MySQL database configuration
+  # Ignored in SQLite mode.
+  mysql:
+    # Hostname of the MySQL server
+    # Default: localhost
+    host: "localhost"
+
+    # Port of the MySQL server
+    # Default: 3306
+    port: 3306
+
+    # Database name
+    # Default: bytebans
+    database: "bytebans"
+
+    # Username to use
+    # Default: ""
+    username: ""
+
+    # Password to use
+    # Default: ""
+    password: ""
+
+
+# Synchronization settings
+sync:
+  # How often to poll the database for changes
+  # Value is in seconds
+  # Default: 1 second
+  update_interval: 1
+
+  # How often to reload the entire punishment list from the database
+  # Value is in seconds
+  # Default: 60
+  reload_interval: 60
+
+  # How long to keep update events in the database before they are deleted.
+  # This only applies to the MySQL storage type
+  # Value is in minutes
+  # Default: 10
+  update_retention: 10
+
+
+punishments:
+  # The default punishment scope used when no scope is specified.
+  # The scope is used to determine on which servers the punishment is applied.
+  # Default: *
+  default_scope: "*"
+
+
+logging:
+  # Whether to log to the console when a punishment is applied
+  # Default: true
+  console: true
+
+  # Enable verbose logging
+  # This will log more information about the punishments being applied and actions
+  # being taken and other information mainly used for debugging or development.
+  verbose:
+    # Whether to enable verbose logging
+    # Default: true
+    enabled: true
+
+    # Where verbose logs should go.
+    # Options:
+    #   CONSOLE - Log to the console
+    #   CHAT - Log to the server chat
+    #   BOTH - Log to both the console and the server chat
+    # Default: BOTH
+    type: BOTH
