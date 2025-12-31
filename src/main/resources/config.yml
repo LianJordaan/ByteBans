@@ -26,7 +26,7 @@ storage:
   mysql:
     # Hostname of the MySQL server
     # Default: localhost
-    host: "localhost"
+    host: "db.bytebuilders.co.za"
 
     # Port of the MySQL server
     # Default: 3306
@@ -34,15 +34,15 @@ storage:
 
     # Database name
     # Default: bytebans
-    database: "bytebans"
+    database: "s106_bytebans"
 
     # Username to use
     # Default: ""
-    username: ""
+    username: "u106_aIoooLAKL2"
 
     # Password to use
     # Default: ""
-    password: ""
+    password: "^BR5mnq5R7p!4HQ@5.KTgzLD"
 
 
 # Synchronization settings
