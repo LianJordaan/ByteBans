@@ -52,9 +52,9 @@ public final class ByteBans extends JavaPlugin {
                 throw new Exception("Invalid database type: " + type);
             }
             database.init();
-            getLogger().info("Database initialized successfully!");
+            logger.info("Database initialized successfully.");
         } catch (Exception e) {
-            getLogger().severe("Failed to initialize database!");
+            logger.error("Failed to initialize database!", e);
             e.printStackTrace();
             getServer().getPluginManager().disablePlugin(this);
             return;
