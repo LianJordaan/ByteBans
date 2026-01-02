@@ -30,7 +30,8 @@ public class DatabaseUtils {
                     duration BIGINT DEFAULT 0,
                     active BOOLEAN DEFAULT TRUE,
                     created_at BIGINT NOT NULL,
-                    updated_at BIGINT NOT NULL
+                    updated_at BIGINT NOT NULL,
+                    silent BOOLEAN DEFAULT FALSE
                 )
             """.formatted(prefix, integerType, autoIncrement));
 
@@ -138,7 +139,8 @@ public class DatabaseUtils {
                 duration,
                 active,
                 created_at,
-                updated_at
+                updated_at,
+                silent
             FROM %spunishments
         """.formatted(prefix);
 
@@ -159,6 +161,7 @@ public class DatabaseUtils {
                 data.setActive(rs.getBoolean("active"));
                 data.setCreatedAt(rs.getLong("created_at"));
                 data.setUpdatedAt(rs.getLong("updated_at"));
+                data.setSilent(rs.getBoolean("silent"));
 
                 punishments.add(data);
             }

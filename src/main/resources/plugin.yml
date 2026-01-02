@@ -28,18 +28,6 @@ commands:
     description: Unbans a player
     usage: /unban <player> [<reason>]
     permission: bytebans.unban
-  banip:
-    description: Bans an IP address
-    usage: /banip <ip address> [<reason>] [<scope>]
-    permission: bytebans.banip
-  unbanip:
-    description: Unbans an IP address
-    usage: /unbanip <ip address> [<reason>]
-    permission: bytebans.unbanip
-  tempbanip:
-    description: Temporarily bans an IP address
-    usage: /tempbanip <ip address> <time> [<reason>] [<scope>]
-    permission: bytebans.tempbanip
   kick:
     description: Kicks a player
     usage: /kick <player> [<reason>]
@@ -48,3 +36,7 @@ commands:
     description: Removes a punishment
     usage: /removepunishment <punishment ID>
     permission: bytebans.removepunishment
+permissions:
+  bytebans.notify.silent:
+    description: Allows the player to see silent punishments
+    default: op

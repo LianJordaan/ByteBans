@@ -1,8 +1,10 @@
 package io.github.lianjordaan.byteBans.util;
 
+import io.github.lianjordaan.byteBans.ByteBans;
 import io.github.lianjordaan.byteBans.model.Result;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
 
 import java.util.*;
 import java.util.regex.Matcher;
@@ -161,13 +163,22 @@ public class CommandUtils {
         return new Result(false, "No player found with that username.");
     }
 
+    public static Result getUsernameFromUuid(String uuid) {
+        for (OfflinePlayer player : Bukkit.getOfflinePlayers()) {
+            if (player.getUniqueId().toString().equalsIgnoreCase(uuid)) {
+                return new Result(true, player.getName());
+            }
+        }
+        return new Result(false, "No player found with that UUID.");
+    }
+
     /**
      * Parses a time string like "1h", "30m", "2.5d"
      * @return duration in milliseconds
      * @throws IllegalArgumentException if invalid
      */
     public static long parseToMillis(String input) {
-        final Pattern PATTERN = Pattern.compile("^(\\d+(?:\\.\\d+)?)(m|h|d|w|mo|y)$", Pattern.CASE_INSENSITIVE);
+        final Pattern PATTERN = Pattern.compile("^(\\d+(?:\\.\\d+)?)(s|m|h|d|w|mo|y)$", Pattern.CASE_INSENSITIVE);
 
         // seconds per unit
         final double MINUTE = 60;
@@ -187,6 +198,7 @@ public class CommandUtils {
         String unit = matcher.group(2).toLowerCase();
 
         double seconds = switch (unit) {
+            case "s" -> value;
             case "m" -> value * MINUTE;
             case "h" -> value * HOUR;
             case "d" -> value * DAY;
@@ -240,5 +252,56 @@ public class CommandUtils {
         }
 
         return result;
+    }
+
+    /**
+     * Formats milliseconds into a human-readable natural language string.
+     * Examples:
+     *   432000000 -> "5 days"
+     *   439200000 -> "5 days and 1 hour"
+     *   439260000 -> "5 days, 1 hour and 1 minute"
+     *
+     * @param millis duration in milliseconds
+     * @return formatted string
+     */
+    public static String formatDurationNatural(long millis) {
+        Map<String, Long> units = toUnitMap(millis);
+        List<String> parts = new ArrayList<>();
+
+        for (Map.Entry<String, Long> entry : units.entrySet()) {
+            long value = entry.getValue();
+            if (value <= 0) continue;
+
+            String unitName;
+            switch (entry.getKey()) {
+                case "d" -> unitName = value == 1 ? "day" : "days";
+                case "h" -> unitName = value == 1 ? "hour" : "hours";
+                case "m" -> unitName = value == 1 ? "minute" : "minutes";
+                case "s" -> unitName = value == 1 ? "second" : "seconds";
+                default -> unitName = entry.getKey();
+            }
+
+            parts.add(value + " " + unitName);
+        }
+
+        if (parts.isEmpty()) return "0 seconds";
+
+        // Build the final string with commas and "and"
+        if (parts.size() == 1) {
+            return parts.get(0);
+        } else if (parts.size() == 2) {
+            return parts.get(0) + " and " + parts.get(1);
+        } else {
+            // 3 or more parts
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < parts.size(); i++) {
+                if (i == parts.size() - 1) {
+                    sb.append("and ").append(parts.get(i));
+                } else {
+                    sb.append(parts.get(i)).append(", ");
+                }
+            }
+            return sb.toString();
+        }
     }
 }

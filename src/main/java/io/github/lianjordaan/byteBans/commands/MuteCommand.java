@@ -12,6 +12,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Arrays;
 import java.util.Map;
 
 public class MuteCommand implements CommandExecutor {
@@ -26,13 +27,15 @@ public class MuteCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
+        boolean silent = CommandUtils.hasFlag("-s", args);
 
-        Map<String, String> parsed = CommandUtils.parseArgs(args, "user", "reason", "scope");
+        String[] filteredArgs = Arrays.stream(args).filter(arg -> !arg.equals("-s")).toArray(String[]::new);
+
+        Map<String, String> parsed = CommandUtils.parseArgs(filteredArgs, "user", "reason", "scope");
 
         String username = parsed.get("user");
         String reason = parsed.get("reason");
         String scope = parsed.get("scope");
-        boolean silent = CommandUtils.hasFlag("-s", args);
 
         logger.verbose("Mute command executed.");
         logger.verbose("User: " + username);
@@ -67,7 +70,7 @@ public class MuteCommand implements CommandExecutor {
             return true;
         }
 
-        Result muteResult = handler.mutePlayer(usernameUuid, uuid, reason, scope);
+        Result muteResult = handler.mutePlayer(usernameUuid, uuid, reason, scope, silent);
         if (muteResult.isSuccess()) {
             sender.sendMessage(miniMessage.deserialize("<green>Successfully muted player."));
         } else {

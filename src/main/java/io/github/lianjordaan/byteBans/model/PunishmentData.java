@@ -12,6 +12,7 @@ public class PunishmentData {
     public boolean active;
     public long createdAt;
     public long updatedAt;
+    public boolean silent;
 
     public long getId() {
         return id;
@@ -55,6 +56,10 @@ public class PunishmentData {
 
     public long getUpdatedAt() {
         return updatedAt;
+    }
+
+    public boolean isSilent() {
+        return silent;
     }
 
     public void setId(long id) {
@@ -101,6 +106,10 @@ public class PunishmentData {
         this.updatedAt = updatedAt;
     }
 
+    public void setSilent(boolean silent) {
+        this.silent = silent;
+    }
+
     @Override
     public String toString() {
         return "PunishmentData{" +
@@ -115,6 +124,7 @@ public class PunishmentData {
                 ", active=" + active +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +
+                ", silent=" + silent +
                 '}';
     }
 
@@ -131,6 +141,7 @@ public class PunishmentData {
         copy.setActive(this.active);
         copy.setCreatedAt(this.createdAt);
         copy.setUpdatedAt(this.updatedAt);
+        copy.setSilent(this.silent);
         return copy;
     }
 }

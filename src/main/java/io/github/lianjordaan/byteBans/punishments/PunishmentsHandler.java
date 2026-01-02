@@ -4,7 +4,11 @@ import io.github.lianjordaan.byteBans.ByteBans;
 import io.github.lianjordaan.byteBans.model.PunishmentData;
 import io.github.lianjordaan.byteBans.model.Result;
 import io.github.lianjordaan.byteBans.util.BBLogger;
+import io.github.lianjordaan.byteBans.util.CommandUtils;
 import io.github.lianjordaan.byteBans.util.DatabaseUtils;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -15,10 +19,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class PunishmentsHandler {
-    private ByteBans  plugin;
+    private static ByteBans plugin;
     private Connection connection;
     private Map<Long, PunishmentData> punishments = new HashMap<>();
     private BBLogger logger;
+    private MiniMessage miniMessage = MiniMessage.miniMessage();
 
     public PunishmentsHandler(ByteBans plugin) throws SQLException {
         this.plugin = plugin;
@@ -27,16 +32,30 @@ public class PunishmentsHandler {
     }
 
     public void reloadPunishments() throws SQLException {
+        Map<Long, PunishmentData> oldPunishments = this.punishments;
         Map<Long, PunishmentData> newPunishments = new HashMap<>();
         List<PunishmentData> punishmentsList = DatabaseUtils.getPunishments(connection, plugin.getDatabaseTablePrefix());
+
         logger.verbose("Loading " + punishmentsList.size() + " punishments into memory...");
+
         for (PunishmentData punishment : punishmentsList) {
             newPunishments.put(punishment.getId(), punishment);
+
+            PunishmentData oldPunishment = oldPunishments.get(punishment.getId());
+            if (oldPunishment == null) {
+                // New punishment detected
+                logger.verbose("New punishment detected: ID " + punishment.getId());
+                announcePunishment(punishment);
+            }
+
             logger.verbose("Loaded punishment with ID " + punishment.getId() + " into memory.");
             logger.verbose("Punishment data: " + punishment.toString());
         }
+
+        // Replace old map with new
         this.punishments = newPunishments;
     }
+
 
     public void loadPunishments() throws SQLException {
         punishments.clear();
@@ -118,7 +137,7 @@ public class PunishmentsHandler {
         return null;
     }
 
-    public Result unmutePlayer(String uuid, String punisherUuid, String reason, String scope, Long id) {
+    public Result unmutePlayer(String uuid, String punisherUuid, String reason, String scope, Long id, boolean silent) {
         Map<Long, PunishmentData> activePunishments = getActivePunishments(uuid);
         if (id == null) {
             for (Map.Entry<Long, PunishmentData> entry : activePunishments.entrySet()) {
@@ -133,7 +152,7 @@ public class PunishmentsHandler {
             punishment.setActive(false);
             punishment.setUpdatedAt(System.currentTimeMillis());
 
-            punishPlayer(uuid, punisherUuid, "unmute", reason, scope, 0, false);
+            punishPlayer(uuid, punisherUuid, "unmute", reason, scope, 0, false, silent);
             boolean success = makePunishmentInactiveInDatabase(id);
             if (success) {
                 return new Result(true, "Successfully unmuted player.");
@@ -144,7 +163,7 @@ public class PunishmentsHandler {
         return new Result(false, "No active mute found for this player.");
     }
 
-    public Result unBanPlayer(String uuid, String punisherUuid, String reason, String scope, Long id) {
+    public Result unBanPlayer(String uuid, String punisherUuid, String reason, String scope, Long id, boolean silent) {
         Map<Long, PunishmentData> activePunishments = getActivePunishments(uuid);
         if (id == null) {
             for (Map.Entry<Long, PunishmentData> entry : activePunishments.entrySet()) {
@@ -159,7 +178,7 @@ public class PunishmentsHandler {
             punishment.setActive(false);
             punishment.setUpdatedAt(System.currentTimeMillis());
 
-            punishPlayer(uuid, punisherUuid, "unban", reason, scope, 0, false);
+            punishPlayer(uuid, punisherUuid, "unban", reason, scope, 0, false, silent);
             boolean success = makePunishmentInactiveInDatabase(id);
             if (success) {
                 return new Result(true, "Successfully unbanned player.");
@@ -185,7 +204,7 @@ public class PunishmentsHandler {
             punishment.setActive(false);
             punishment.setUpdatedAt(System.currentTimeMillis());
 
-            punishPlayer(uuid, punisherUuid, "unwarn", reason, scope, 0, false);
+            punishPlayer(uuid, punisherUuid, "unwarn", reason, scope, 0, false, true);
             boolean success = makePunishmentInactiveInDatabase(id);
             if (success) {
                 return new Result(true, "Successfully unwarned player.");
@@ -211,7 +230,7 @@ public class PunishmentsHandler {
             punishment.setActive(false);
             punishment.setUpdatedAt(System.currentTimeMillis());
 
-            punishPlayer(uuid, punisherUuid, "unnote", reason, scope, 0, false);
+            punishPlayer(uuid, punisherUuid, "unnote", reason, scope, 0, false, true);
             boolean success = makePunishmentInactiveInDatabase(id);
             if (success) {
                 return new Result(true, "Successfully removed note.");
@@ -235,71 +254,71 @@ public class PunishmentsHandler {
         return new Result(false, "Failed to remove punishment. Please check console for more details.");
     }
 
-    public Result mutePlayer(String uuid, String punisherUuid, String reason, String scope) {
+    public Result mutePlayer(String uuid, String punisherUuid, String reason, String scope, boolean silent) {
         PunishmentData alreadyMuted = isPlayerMuted(uuid);
         if (alreadyMuted != null) {
             return new Result(false, "Player is already muted.");
         }
-        boolean muteResult = punishPlayer(uuid, punisherUuid, "mute", reason, scope, 0, true);
+        boolean muteResult = punishPlayer(uuid, punisherUuid, "mute", reason, scope, 0, true, silent);
         if (muteResult) {
             return new Result(true, "Successfully muted player.");
         }
         return new Result(false, "Failed to mute player. Please check console for more details.");
     }
 
-    public Result tempMutePlayer(String uuid, String punisherUuid, long duration, String reason, String scope) {
+    public Result tempMutePlayer(String uuid, String punisherUuid, long duration, String reason, String scope, boolean silent) {
         PunishmentData alreadyMuted = isPlayerMuted(uuid);
         if (alreadyMuted != null) {
             return new Result(false, "Player is already muted.");
         }
-        boolean muteResult = punishPlayer(uuid, punisherUuid, "mute", reason, scope, duration, true);
+        boolean muteResult = punishPlayer(uuid, punisherUuid, "mute", reason, scope, duration, true, silent);
         if (muteResult) {
             return new Result(true, "Successfully tempmuted player.");
         }
         return new Result(false, "Failed to tempmute player. Please check console for more details.");
     }
 
-    public Result banPlayer(String uuid, String punisherUuid, String reason, String scope) {
+    public Result banPlayer(String uuid, String punisherUuid, String reason, String scope, boolean silent) {
         PunishmentData alreadyBanned = isPlayerBanned(uuid);
         if (alreadyBanned != null) {
             return new Result(false, "Player is already banned.");
         }
-        boolean banResult = punishPlayer(uuid, punisherUuid, "ban", reason, scope, 0, true);
+        boolean banResult = punishPlayer(uuid, punisherUuid, "ban", reason, scope, 0, true, silent);
         if (banResult) {
             return new Result(true, "Successfully banned player.");
         }
         return new Result(false, "Failed to ban player. Please check console for more details.");
     }
 
-    public Result tempBanPlayer(String uuid, String punisherUuid, long duration, String reason, String scope) {
+    public Result tempBanPlayer(String uuid, String punisherUuid, long duration, String reason, String scope, boolean silent) {
         PunishmentData alreadyBanned = isPlayerBanned(uuid);
         if (alreadyBanned != null) {
             return new Result(false, "Player is already banned.");
         }
-        boolean banResult = punishPlayer(uuid, punisherUuid, "ban", reason, scope, duration, true);
+        boolean banResult = punishPlayer(uuid, punisherUuid, "ban", reason, scope, duration, true, silent);
         if (banResult) {
             return new Result(true, "Successfully tempbanned player.");
         }
         return new Result(false, "Failed to tempban player. Please check console for more details.");
     }
 
-    public boolean kickPlayer(String uuid, String punisherUuid, String reason, String scope) {
-        return punishPlayer(uuid, punisherUuid, "kick", reason, scope, 0, true);
+    public boolean kickPlayer(String uuid, String punisherUuid, String reason, String scope, boolean silent) {
+        return punishPlayer(uuid, punisherUuid, "kick", reason, scope, 0, true, silent);
     }
 
     public boolean warnPlayer(String uuid, String punisherUuid, String reason, String scope) {
-        return punishPlayer(uuid, punisherUuid, "warn", reason, scope, 0, true);
+        return punishPlayer(uuid, punisherUuid, "warn", reason, scope, 0, true, true);
     }
 
     public boolean warnPlayer(String uuid, String punisherUuid, long duration, String reason, String scope) {
-        return punishPlayer(uuid, punisherUuid, "warn", reason, scope, duration, true);
+        return punishPlayer(uuid, punisherUuid, "warn", reason, scope, duration, true, true);
     }
 
     public boolean addNote(String uuid, String punisherUuid, String note, String scope) {
-        return punishPlayer(uuid, punisherUuid, "note", note, scope, 0, true);
+        return punishPlayer(uuid, punisherUuid, "note", note, scope, 0, true, true);
     }
 
-    public boolean punishPlayer(String uuid, String punisherUuid, String type, String reason, String scope, long duration, boolean active) {
+    public boolean punishPlayer(String uuid, String punisherUuid, String type, String reason, String scope, long duration, boolean active, boolean silent) {
         PunishmentData punishment = new PunishmentData();
         punishment.setUuid(uuid);
         punishment.setPunisherUuid(punisherUuid);
@@ -311,8 +330,9 @@ public class PunishmentsHandler {
         punishment.setActive(active);
         punishment.setCreatedAt(System.currentTimeMillis());
         punishment.setUpdatedAt(System.currentTimeMillis());
+        punishment.setSilent(silent);
 
-        String sql = "INSERT INTO " + plugin.getDatabaseTablePrefix() + "punishments (uuid, punisher_uuid, type, reason, scope, start_time, duration, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO " + plugin.getDatabaseTablePrefix() + "punishments (uuid, punisher_uuid, type, reason, scope, start_time, duration, active, created_at, updated_at, silent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try {
             long generatedId = DatabaseUtils.executeInsert(connection, sql,
@@ -325,11 +345,11 @@ public class PunishmentsHandler {
                     punishment.getDuration(),
                     punishment.isActive(),
                     punishment.getCreatedAt(),
-                    punishment.getUpdatedAt()
+                    punishment.getUpdatedAt(),
+                    punishment.isSilent()
             );
 
             punishment.setId(generatedId);
-            punishments.put(generatedId, punishment);
 
             sendPunishmentUpdate(generatedId, type, System.currentTimeMillis(), punisherUuid);
 
@@ -378,5 +398,138 @@ public class PunishmentsHandler {
 
     public List<Long> getPunishmentIds() {
         return getPunishments().keySet().stream().map(Long::valueOf).collect(Collectors.toList());
+    }
+
+    public void announcePunishment(PunishmentData punishment) {
+        String punisher = punishment.getPunisherUuid();
+        String punisherName = "UNKNOWN";
+        if (punisher.equalsIgnoreCase("CONSOLE")) {
+            punisherName = "CONSOLE";
+        } else {
+            Result result = CommandUtils.getUsernameFromUuid(punisher);
+            if (result.isSuccess()) {
+                punisherName = result.getMessage();
+            }
+        }
+        String punishedPlayer = punishment.getUuid();
+        String punishedPlayerName = "UNKNOWN";
+        if (punishedPlayer.equalsIgnoreCase("CONSOLE")) {
+            punishedPlayerName = "CONSOLE";
+        } else {
+            Result result = CommandUtils.getUsernameFromUuid(punishedPlayer);
+            if (result.isSuccess()) {
+                punishedPlayerName = result.getMessage();
+            }
+        }
+
+
+        String banMessage = "<green>" + punisherName + " <white>banned <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>'";
+        String tempBanMessage = "<green>" + punisherName + " <white>banned <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>' for <green>" + CommandUtils.formatDurationNatural(punishment.getDuration()) + "<white>";
+        String muteMessage = "<green>" + punisherName + " <white>muted <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>'";
+        String tempMuteMessage = "<green>" + punisherName + " <white>muted <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>' for <green>" + CommandUtils.formatDurationNatural(punishment.getDuration()) + "<white>";
+        String kickMessage = "<green>" + punisherName + " <white>kicked <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>'";
+        String unBanMessage = "<green>" + punisherName + " <white>unbanned <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>'";
+        String unMuteMessage = "<green>" + punisherName + " <white>unmuted <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>'";
+
+
+        String message = null;
+
+        switch (punishment.getType()) {
+            case "ban":
+                message = banMessage;
+                if (punishment.getDuration() != 0) {
+                    message = tempBanMessage;
+                }
+                break;
+            case "mute":
+                message = muteMessage;
+                if (punishment.getDuration() != 0) {
+                    message = tempMuteMessage;
+                }
+                break;
+            case "kick":
+                message = kickMessage;
+                break;
+            case "unban":
+                message = unBanMessage;
+                break;
+            case "unmute":
+                message = unMuteMessage;
+                break;
+            default:
+                break;
+        }
+
+        if (message == null) {
+            return;
+        }
+
+        if (punishment.isSilent()) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (player.hasPermission("bytebans.notify.silent")) {
+                    player.sendMessage(miniMessage.deserialize("<grey>[silent] <reset>" + message));
+                }
+            }
+            logger.info("[silent] " + message);
+        } else {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                player.sendMessage(miniMessage.deserialize(message));
+            }
+            logger.info(message);
+        }
+    }
+
+    /**
+     * Returns the active punishments filtered by the server name.
+     *
+     * @param serverName the name of the current server (from config)
+     * @return map of punishment ID -> PunishmentData
+     */
+    public Map<Long, PunishmentData> getActivePunishmentsForServer(String serverName) {
+        Map<Long, PunishmentData> filtered = new HashMap<>();
+
+        for (Map.Entry<Long, PunishmentData> entry : getActivePunishments().entrySet()) {
+            PunishmentData punishment = entry.getValue();
+            String scope = punishment.getScope();
+
+            if (matchesScope(scope, serverName)) {
+                filtered.put(entry.getKey(), punishment);
+            }
+        }
+
+        return filtered;
+    }
+
+    /**
+     * Returns true if the scope matches the server name.
+     * Supports wildcards: *, prefix*, *suffix, *contains*
+     */
+    public boolean matchesScope(String scope, String serverName) {
+        scope = scope.toLowerCase();
+        serverName = serverName.toLowerCase();
+
+        if (scope.equals("*")) return true; // matches all
+        if (scope.startsWith("*") && scope.endsWith("*")) {
+            // *contains*
+            String inner = scope.substring(1, scope.length() - 1);
+            return serverName.contains(inner);
+        } else if (scope.startsWith("*")) {
+            // *suffix
+            String suffix = scope.substring(1);
+            return serverName.endsWith(suffix);
+        } else if (scope.endsWith("*")) {
+            // prefix*
+            String prefix = scope.substring(0, scope.length() - 1);
+            return serverName.startsWith(prefix);
+        } else {
+            // exact match
+            return serverName.equals(scope);
+        }
+    }
+
+    public static boolean hasPunishmentBypass(Player player) {
+        boolean operatorBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.allow_operator") && player.isOp();
+        boolean permissionBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.allow_permission") && player.hasPermission("bytebans.bypass");
+        return operatorBypass || permissionBypass;
     }
 }
