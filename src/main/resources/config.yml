@@ -4,7 +4,8 @@ server:
   # Unique server name in a network
   # Ignored in SQLite mode.
   # "*" = global bans (applies to all servers) even when using MySQL
-  name: "*"
+  # Default: "*"
+  name: "hub"
 
 
 storage:
@@ -53,9 +54,9 @@ sync:
   update_interval: 1
 
   # How often to reload the entire punishment list from the database
-  # Value is in seconds
-  # Default: 60
-  reload_interval: 60
+  # Value is in seconds (600 = 10 minutes)
+  # Default: 600
+  full_update_interval: 600
 
   # How long to keep update events in the database before they are deleted.
   # This only applies to the MySQL storage type
@@ -64,11 +65,62 @@ sync:
   update_retention: 10
 
 
+# Available servers scanner
+# When the plugin is linked to a MySQL database, it will automatically every x amount of time
+# put the server.name into the database for other plugins to discover it. This is useful for
+# tab completion and other features.
+available_servers:
+  # How often to check for available servers
+  # Value is in seconds
+  # Default: 60
+  update_interval: 60
+
+  # How often THIS plugin should send its server.name to the database
+  # Value is in seconds
+  # Default: 60
+  send_interval: 60
+
+  # How old a servers heartbeat can be before it is considered offline and no longer be used by this plugin.
+  # Its recommended to leave this as is and keep them the same on all servers.
+  # Value is in seconds (600 = 10 minutes)
+  # Default: 600
+  heartbeat_timeout: 600
+
+  # How often to delete old heartbeats from the database
+  # Value is in seconds (600 = 10 minutes)
+  # Default: 600
+  heartbeat_cleanup_interval: 600
+
+  # How old a servers heartbeat can be before its name is removed from the database.
+  # This is useful for removing old servers from the database.
+  # Value is in seconds (3600 = 1 hour)
+  # Default: 3600
+  heartbeat_retention: 3600
+
+
 punishments:
   # The default punishment scope used when no scope is specified.
   # The scope is used to determine on which servers the punishment is applied.
   # Default: *
   default_scope: "*"
+
+  # The default reason used when no reason is specified.
+  # Default: No reason specified
+  default_reason: "No reason specified"
+
+  # The options to control how punishments can be bypassed.
+  staff_bypass:
+    # Whether to allow players with operator to bypass punishments
+    # Default: true
+    allow_operator: true
+
+    # Whether to allow players with "bytebans.bypass" permission to bypass punishments
+    # Default: true
+    allow_permission: true
+
+    # Whether the plugin should notify players when they are bypassing punishments
+    # Default: true
+    notify: true
 
 
 logging:

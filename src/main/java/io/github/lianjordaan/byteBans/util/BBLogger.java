@@ -1,18 +1,18 @@
 package io.github.lianjordaan.byteBans.util;
 
+import io.github.lianjordaan.byteBans.ByteBans;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
 
 public class BBLogger {
     private final FileConfiguration config;
-    private final JavaPlugin plugin;
+    private final ByteBans plugin;
     private MiniMessage miniMessage = MiniMessage.miniMessage();
 
-    public BBLogger(FileConfiguration config, JavaPlugin plugin) {
-        this.config = config;
+    public BBLogger(ByteBans plugin) {
+        this.config = plugin.getConfig();
         this.plugin = plugin;
     }
 
@@ -24,6 +24,13 @@ public class BBLogger {
     }
 
     public void error(String message, Throwable t) {
+        if (config.getBoolean("logging.console")) {
+            Bukkit.getLogger().severe("[ByteBans] " + message);
+        }
+        this.verbose(message, "ERROR");
+    }
+
+    public void error(String message) {
         if (config.getBoolean("logging.console")) {
             Bukkit.getLogger().severe("[ByteBans] " + message);
         }

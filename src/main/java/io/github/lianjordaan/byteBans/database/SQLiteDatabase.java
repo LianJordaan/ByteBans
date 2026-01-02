@@ -1,17 +1,17 @@
 package io.github.lianjordaan.byteBans.database;
 
-import org.bukkit.plugin.java.JavaPlugin;
+import io.github.lianjordaan.byteBans.ByteBans;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class SQLiteDatabase implements Database {
-    private final JavaPlugin plugin;
+    private final ByteBans plugin;
     private Connection connection;
     private String dbFile;
 
-    public SQLiteDatabase(JavaPlugin plugin, String dbFile) {
+    public SQLiteDatabase(ByteBans plugin, String dbFile) {
         this.plugin = plugin;
         this.dbFile = dbFile;
     }
