@@ -8,14 +8,14 @@ commands:
     description: Mutes a player
     usage: /mute <player> [<reason>] [<scope>]
     permission: bytebans.mute
-  unmute:
-    description: Unmutes a player
-    usage: /unmute <player> [<reason>]
-    permission: bytebans.unmute
   tempmute:
     description: Temporarily mutes a player
     usage: /tempmute <player> <time> [<reason>] [<scope>]
     permission: bytebans.tempmute
+  unmute:
+    description: Unmutes a player
+    usage: /unmute <player> [<reason>]
+    permission: bytebans.unmute
   ban:
     description: Bans a player
     usage: /ban <player> [<reason>] [<scope>]
@@ -39,4 +39,7 @@ commands:
 permissions:
   bytebans.notify.silent:
     description: Allows the player to see silent punishments
+    default: op
+  bytebans.notify.speak_muted:
+    description: Makes the player get a message when someone that is muted tries to speak
     default: op

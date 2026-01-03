@@ -16,12 +16,12 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-public class MuteCommand implements CommandExecutor {
+public class UnbanCommand implements CommandExecutor {
     private ByteBans plugin;
     private BBLogger logger;
     private MiniMessage miniMessage = MiniMessage.miniMessage();
 
-    public MuteCommand(ByteBans plugin) {
+    public UnbanCommand(ByteBans plugin) {
         this.plugin = plugin;
         this.logger = plugin.getBBLogger();
     }
@@ -32,28 +32,19 @@ public class MuteCommand implements CommandExecutor {
 
         String[] filteredArgs = Arrays.stream(args).filter(arg -> !arg.equals("-s")).toArray(String[]::new);
 
-        Map<String, String> parsed = CommandUtils.parseArgs(filteredArgs, "user", "reason", "scope");
+        Map<String, String> parsed = CommandUtils.parseArgs(filteredArgs, "user", "reason");
 
         String username = parsed.get("user");
         String reason = parsed.get("reason");
-        String scope = parsed.get("scope");
 
-        logger.verbose("Mute command executed.");
+        logger.verbose("Unmute command executed.");
         logger.verbose("User: " + username);
         logger.verbose("Reason: " + reason);
-        logger.verbose("Scope: " + scope);
         logger.verbose("Silent: " + silent);
 
-        if (scope == null) {
-            scope = plugin.getConfig().getString("punishments.default_scope", "*");
-        }
         if (reason == null) {
             reason = plugin.getConfig().getString("punishments.default_reason", "No reason specified");
         }
-
-        String alreadyMutedMessage = plugin.getConfig().getString("messages.commands.mute.already_muted");
-        String muteErrorMessage = plugin.getConfig().getString("messages.commands.mute.command_error");
-        String invalidUsernameMessage = plugin.getConfig().getString("messages.commands.mute.player_not_found");
 
         String punisherUuid = "CONSOLE";
         String punisherName = "CONSOLE";
@@ -62,11 +53,14 @@ public class MuteCommand implements CommandExecutor {
             punisherName = sender.getName();
         }
 
+        String alreadyUnbannedMessage = plugin.getConfig().getString("messages.commands.unban.already_unbanned");
+        String unbanErrorMessage = plugin.getConfig().getString("messages.commands.unban.command_error");
+        String invalidUsernameMessage = plugin.getConfig().getString("messages.commands.unban.player_not_found");
+
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("user", username);
         placeholders.put("executor", punisherName);
         placeholders.put("reason", reason);
-        placeholders.put("scope", scope);
 
         Result result = CommandUtils.getUuidFromUsername(username);
         if (!result.isSuccess()) {
@@ -77,18 +71,18 @@ public class MuteCommand implements CommandExecutor {
 
         PunishmentsHandler handler = plugin.getPunishmentsHandler();
 
-        boolean isAlreadyMuted = handler.isPlayerMuted(usernameUuid) != null;
-        if (isAlreadyMuted) {
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(alreadyMutedMessage, placeholders)));
+        boolean isBanned = handler.isPlayerBanned(usernameUuid) != null;
+        if (!isBanned) {
+            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(alreadyUnbannedMessage, placeholders)));
             return true;
         }
 
-        Result muteResult = handler.mutePlayer(usernameUuid, punisherUuid, reason, scope, silent);
-        if (muteResult.isSuccess()) {
-//            sender.sendMessage(miniMessage.deserialize("<green>Successfully muted player."));
+        Result unbanResult = handler.unBanPlayer(usernameUuid, punisherUuid, reason, null, silent);
+        if (unbanResult.isSuccess()) {
+//            sender.sendMessage(miniMessage.deserialize("<green>Successfully unbanned player."));
         } else {
-            placeholders.put("error", muteResult.getMessage());
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(muteErrorMessage, placeholders)));
+            placeholders.put("error", unbanResult.getMessage());
+            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(unbanErrorMessage, placeholders)));
         }
         return true;
     }

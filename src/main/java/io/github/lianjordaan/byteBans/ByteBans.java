@@ -5,6 +5,7 @@ import io.github.lianjordaan.byteBans.database.Database;
 import io.github.lianjordaan.byteBans.database.MySQLDatabase;
 import io.github.lianjordaan.byteBans.database.SQLiteDatabase;
 import io.github.lianjordaan.byteBans.listeners.ChatListener;
+import io.github.lianjordaan.byteBans.listeners.LoginListener;
 import io.github.lianjordaan.byteBans.punishments.PunishmentUpdater;
 import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
 import io.github.lianjordaan.byteBans.servers.AvailableServersScanner;
@@ -39,10 +40,10 @@ public final class ByteBans extends JavaPlugin {
     public void onEnable() {
 
         // remove config.yml if it exists
-//        File configFile = new File(getDataFolder(), "config.yml");
-//        if (configFile.exists()) {
-//            configFile.delete();
-//        }
+        File configFile = new File(getDataFolder(), "config.yml");
+        if (configFile.exists()) {
+            configFile.delete();
+        }
 
         // Plugin startup logic
         saveDefaultConfig();
@@ -155,17 +156,16 @@ public final class ByteBans extends JavaPlugin {
         logger.verbose("Initializing plugin commands...");
         try {
             getCommand("mute").setExecutor(new MuteCommand(this));
-            logger.verbose("Registered mute command.");
             getCommand("tempmute").setExecutor(new TempMuteCommand(this));
-            logger.verbose("Registered tempmute command.");
             getCommand("unmute").setExecutor(new UnmuteCommand(this));
-            logger.verbose("Registered unmute command.");
-//            getCommand("ban").setExecutor(new banCommand(this));
-//            getCommand("unban").setExecutor(new unbanCommand(this));
-//            getCommand("tempban").setExecutor(new tempBanCommand(this));
-//            getCommand("kick").setExecutor(new kickCommand(this));
+
+            getCommand("ban").setExecutor(new BanCommand(this));
+            getCommand("tempban").setExecutor(new TempBanCommand(this));
+            getCommand("unban").setExecutor(new UnbanCommand(this));
+
+            getCommand("kick").setExecutor(new KickCommand(this));
+
             getCommand("removepunishment").setExecutor(new RemovePunishmentCommand(this));
-            logger.verbose("Registered removepunishment command.");
         } catch (Exception e) {
             logger.error("Failed to initialize plugin commands!", e);
             e.printStackTrace();
@@ -176,15 +176,15 @@ public final class ByteBans extends JavaPlugin {
         logger.verbose("Registering tab completers...");
         try {
             getCommand("mute").setTabCompleter(new TabCompleter(this));
-            logger.verbose("Registered mute tab completer.");
             getCommand("tempmute").setTabCompleter(new TabCompleter(this));
-            logger.verbose("Registered tempmute tab completer.");
             getCommand("unmute").setTabCompleter(new TabCompleter(this));
-            logger.verbose("Registered unmute tab completer.");
-//            getCommand("ban").setTabCompleter(new banCommand(this));
-//            getCommand("unban").setTabCompleter(new unbanCommand(this));
-//            getCommand("tempban").setTabCompleter(new tempBanCommand(this));
-//            getCommand("kick").setTabCompleter(new kickCommand(this));
+
+            getCommand("ban").setTabCompleter(new TabCompleter(this));
+            getCommand("tempban").setTabCompleter(new TabCompleter(this));
+            getCommand("unban").setTabCompleter(new TabCompleter(this));
+
+            getCommand("kick").setTabCompleter(new TabCompleter(this));
+
             getCommand("removepunishment").setTabCompleter(new TabCompleter(this));
             logger.verbose("Registered removepunishment tab completer.");
         } catch (Exception e) {
@@ -196,7 +196,7 @@ public final class ByteBans extends JavaPlugin {
         logger.verbose("Successfully registered tab completers.");
         try {
             getServer().getPluginManager().registerEvents(new ChatListener(this), this);
-            logger.verbose("Registered chat listener.");
+            getServer().getPluginManager().registerEvents(new LoginListener(this), this);
         } catch (Exception e) {
             logger.error("Failed to register event listeners!", e);
             e.printStackTrace();

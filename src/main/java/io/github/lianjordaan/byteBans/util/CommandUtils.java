@@ -304,4 +304,24 @@ public class CommandUtils {
             return sb.toString();
         }
     }
+
+    public static String parseMessageWithPlaceholders(String message, Map<String, String> placeholders) {
+        if (message == null) {
+            return "";
+        }
+        if (placeholders == null) {
+            return message;
+        }
+
+        String parsedMessage = message;
+
+        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+            String placeholder = "{" + entry.getKey() + "}";
+            String value = entry.getValue() != null ? entry.getValue() : "";
+            parsedMessage = parsedMessage.replace(placeholder, value);
+        }
+
+        return parsedMessage;
+    }
+
 }

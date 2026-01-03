@@ -15,9 +15,16 @@ import java.util.stream.Collectors;
 public class TabCompleter implements org.bukkit.command.TabCompleter {
     private final ByteBans plugin;
 
+    private static final List<String> KICK_KEYS = Arrays.asList("user:", "reason:", "scope:");
+
     private static final List<String> MUTE_KEYS = Arrays.asList("user:", "reason:", "scope:");
     private static final List<String> TEMPMUTE_KEYS = Arrays.asList("user:", "time:", "reason:", "scope:");
     private static final List<String> UNMUTE_KEYS = Arrays.asList("user:", "reason:");
+
+    private static final List<String> BAN_KEYS = Arrays.asList("user:", "reason:", "scope:");
+    private static final List<String> TEMPBAN_KEYS = Arrays.asList("user:", "time:", "reason:", "scope:");
+    private static final List<String> UNBAN_KEYS = Arrays.asList("user:", "reason:");
+
     private static final List<String> REMOVEPUNISHMENT_KEYS = Arrays.asList("id:");
 
     public TabCompleter(ByteBans plugin) {
@@ -61,6 +68,9 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
             case "mute": keys = new ArrayList<>(MUTE_KEYS); break;
             case "tempmute": keys = new ArrayList<>(TEMPMUTE_KEYS); break;
             case "unmute": keys = new ArrayList<>(UNMUTE_KEYS); break;
+            case "ban": keys = new ArrayList<>(BAN_KEYS); break;
+            case "tempban": keys = new ArrayList<>(TEMPBAN_KEYS); break;
+            case "unban": keys = new ArrayList<>(UNBAN_KEYS); break;
             case "removepunishment": keys = new ArrayList<>(REMOVEPUNISHMENT_KEYS); break;
             default: return Collections.emptyList();
         }

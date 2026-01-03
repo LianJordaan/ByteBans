@@ -9,20 +9,21 @@ import io.github.lianjordaan.byteBans.util.DatabaseUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.event.player.PlayerKickEvent;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class PunishmentsHandler {
     private static ByteBans plugin;
     private Connection connection;
     private Map<Long, PunishmentData> punishments = new HashMap<>();
-    private BBLogger logger;
+    private static BBLogger logger;
     private MiniMessage miniMessage = MiniMessage.miniMessage();
 
     public PunishmentsHandler(ByteBans plugin) throws SQLException {
@@ -190,7 +191,7 @@ public class PunishmentsHandler {
         return new Result(false, "No active mute found for this player.");
     }
 
-    public Result unBanPlayer(String uuid, String punisherUuid, String reason, String scope, Long id, boolean silent) {
+    public Result unBanPlayer(String uuid, String punisherUuid, String reason, Long id, boolean silent) {
         Map<Long, PunishmentData> activePunishments = getNotExpiredPunishments(getActivePunishments(uuid));
         if (id == null) {
             for (Map.Entry<Long, PunishmentData> entry : activePunishments.entrySet()) {
@@ -205,7 +206,7 @@ public class PunishmentsHandler {
             punishment.setActive(false);
             punishment.setUpdatedAt(System.currentTimeMillis());
 
-            punishPlayer(uuid, punisherUuid, "unban", reason, scope, 0, false, silent);
+            punishPlayer(uuid, punisherUuid, "unban", reason, "*", 0, false, silent);
             boolean success = makePunishmentInactiveInDatabase(id);
             if (success) {
                 return new Result(true, "Successfully unbanned player.");
@@ -449,62 +450,117 @@ public class PunishmentsHandler {
             }
         }
 
-
-        String banMessage = "<green>" + punisherName + " <white>banned <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>'";
-        String tempBanMessage = "<green>" + punisherName + " <white>banned <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>' for <green>" + CommandUtils.formatDurationNatural(punishment.getDuration()) + "<white>";
-        String muteMessage = "<green>" + punisherName + " <white>muted <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>'";
-        String tempMuteMessage = "<green>" + punisherName + " <white>muted <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>' for <green>" + CommandUtils.formatDurationNatural(punishment.getDuration()) + "<white>";
-        String kickMessage = "<green>" + punisherName + " <white>kicked <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>'";
-        String unBanMessage = "<green>" + punisherName + " <white>unbanned <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>'";
-        String unMuteMessage = "<green>" + punisherName + " <white>unmuted <green>" + punishedPlayerName + "<white> for '<green>" + punishment.getReason() + "<white>'";
-
+        Map<String, String> placeholders = new HashMap<>();
 
         String message = null;
+        String broadcast = null;
+        String broadcastSilent = null;
+
+        String muteMessage = plugin.getConfig().getString("messages.commands.mute.message");
+        String muteBroadcast = plugin.getConfig().getString("messages.commands.mute.broadcast");
+        String muteBroadcastSilent = plugin.getConfig().getString("messages.commands.mute.broadcast_silent");
+
+        String tempMuteMessage = plugin.getConfig().getString("messages.commands.tempmute.message");
+        String tempMuteBroadcast = plugin.getConfig().getString("messages.commands.tempmute.broadcast");
+        String tempMuteBroadcastSilent = plugin.getConfig().getString("messages.commands.tempmute.broadcast_silent");
+
+        String banMessage = plugin.getConfig().getString("messages.commands.ban.message");
+        String banBroadcast = plugin.getConfig().getString("messages.commands.ban.broadcast");
+        String banBroadcastSilent = plugin.getConfig().getString("messages.commands.ban.broadcast_silent");
+
+        String tempBanMessage = plugin.getConfig().getString("messages.commands.tempban.message");
+        String tempBanBroadcast = plugin.getConfig().getString("messages.commands.tempban.broadcast");
+        String tempBanBroadcastSilent = plugin.getConfig().getString("messages.commands.tempban.broadcast_silent");
+
+        String kickMessage = plugin.getConfig().getString("messages.commands.kick.message");
+        String kickBroadcast = plugin.getConfig().getString("messages.commands.kick.broadcast");
+        String kickBroadcastSilent = plugin.getConfig().getString("messages.commands.kick.broadcast_silent");
+
+        String unBanBroadcast = plugin.getConfig().getString("messages.commands.unban.broadcast");
+        String unBanBroadcastSilent = plugin.getConfig().getString("messages.commands.unban.broadcast_silent");
+
+        String unMuteMessage = plugin.getConfig().getString("messages.commands.unmute.message");
+        String unMuteBroadcast = plugin.getConfig().getString("messages.commands.unmute.broadcast");
+        String unMuteBroadcastSilent = plugin.getConfig().getString("messages.commands.unmute.broadcast_silent");
 
         switch (punishment.getType()) {
             case "ban":
                 message = banMessage;
+                broadcast = banBroadcast;
+                broadcastSilent = banBroadcastSilent;
                 if (punishment.getDuration() != 0) {
                     message = tempBanMessage;
+                    broadcast = tempBanBroadcast;
+                    broadcastSilent = tempBanBroadcastSilent;
                 }
                 break;
             case "mute":
                 message = muteMessage;
+                broadcast = muteBroadcast;
+                broadcastSilent = muteBroadcastSilent;
                 if (punishment.getDuration() != 0) {
                     message = tempMuteMessage;
+                    broadcast = tempMuteBroadcast;
+                    broadcastSilent = tempMuteBroadcastSilent;
                 }
                 break;
             case "kick":
                 message = kickMessage;
+                broadcast = kickBroadcast;
+                broadcastSilent = kickBroadcastSilent;
                 break;
             case "unban":
-                message = unBanMessage;
-                break;
+                message = "<red>If you are seeing this.. There is either a HUGE problem with the logic of the universe or you have permission bypass...";
+                broadcast = unBanBroadcast;
+                broadcastSilent = unBanBroadcastSilent;
             case "unmute":
                 message = unMuteMessage;
+                broadcast = unMuteBroadcast;
+                broadcastSilent = unMuteBroadcastSilent;
                 break;
             default:
                 break;
         }
 
-        if (message == null) {
+        if (message == null || broadcast == null || broadcastSilent == null) {
             return;
         }
+        placeholders.put("user", punishedPlayerName);
+        placeholders.put("executor", punisherName);
+        placeholders.put("reason", punishment.getReason());
+        placeholders.put("scope", punishment.getScope());
+        placeholders.put("punishment_id", String.valueOf(punishment.getId()));
+        placeholders.put("duration_left", CommandUtils.formatDurationNatural(punishment.getDuration()));
 
         if (punishment.isSilent()) {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 if (player.hasPermission("bytebans.notify.silent")) {
-                    player.sendMessage(miniMessage.deserialize("<grey>[silent] <reset>" + message));
-                } else if (player.getUniqueId().toString().equalsIgnoreCase(punishedPlayer)) {
-                    player.sendMessage(miniMessage.deserialize(message));
+                    player.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(broadcastSilent, placeholders)));
+                }
+                if (player.getUniqueId().toString().equalsIgnoreCase(punishedPlayer)) {
+                    player.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(message, placeholders)));
                 }
             }
-            logger.info("[silent] " + message);
+            logger.info(CommandUtils.parseMessageWithPlaceholders(broadcastSilent, placeholders));
         } else {
             for (Player player : Bukkit.getOnlinePlayers()) {
-                player.sendMessage(miniMessage.deserialize(message));
+                player.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(broadcast, placeholders)));
             }
-            logger.info(message);
+            logger.info(CommandUtils.parseMessageWithPlaceholders(broadcast, placeholders));
+        }
+        if ("ban".equalsIgnoreCase(punishment.getType())) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (Objects.equals(punishment.getUuid(), player.getUniqueId().toString())) {
+                    kickBannedPlayer(punishment, player);
+                }
+            }
+        }
+        if ("kick".equalsIgnoreCase(punishment.getType())) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (Objects.equals(punishment.getUuid(), player.getUniqueId().toString())) {
+                    kickPlayer(punishment, player);
+                }
+            }
         }
     }
 
@@ -582,4 +638,82 @@ public class PunishmentsHandler {
         }
     }
 
+    public String formatMillis(long millis, String format, String timezone) {
+        ZoneId zone;
+
+        try {
+            zone = ZoneId.of(timezone);
+        } catch (Exception ex) {
+            logger.error("Invalid timezone '" + timezone + "'. Falling back to server default.");
+            zone = ZoneId.systemDefault(); // fallback
+        }
+
+        return DateTimeFormatter
+                .ofPattern(format)
+                .withZone(zone)
+                .format(Instant.ofEpochMilli(millis));
+    }
+
+    public void kickBannedPlayer(PunishmentData punishment, Player player) {
+        String dateFormat = plugin.getConfig().getString("punishments.date_format");
+        String dateTimezone = plugin.getConfig().getString("punishments.date_timezone");
+
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("start_time_formatted", formatMillis(punishment.getStartTime(), dateFormat, dateTimezone));
+
+        String kickMessage;
+        boolean permanent = punishment.getDuration() == 0;
+        if (permanent) {
+            kickMessage = plugin.getConfig().getString("messages.general.banned.permanent");
+        } else {
+            kickMessage = plugin.getConfig().getString("messages.general.banned.temporary");
+        }
+        String bypassChatMessage = plugin.getConfig().getString("messages.general.banned.bypass");
+
+        placeholders.put("user", player.getName());
+        placeholders.put("executor", punishment.getPunisherUuid());
+        placeholders.put("reason", punishment.getReason());
+        placeholders.put("scope", punishment.getScope());
+        placeholders.put("punishment_id", String.valueOf(punishment.getId()));
+        placeholders.put("duration_left", CommandUtils.formatDurationNatural(punishment.getDuration()));
+
+        boolean adminBypass = PunishmentsHandler.hasPunishmentBypass(player);
+        boolean notifyAdminBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.notify");
+        if (adminBypass) {
+            if (notifyAdminBypass) {
+                player.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(bypassChatMessage, placeholders)));
+            }
+            logger.verbose(CommandUtils.parseMessageWithPlaceholders(kickMessage, placeholders));
+            return;
+        }
+        player.kick(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(kickMessage, placeholders)), PlayerKickEvent.Cause.BANNED);
+    }
+
+    public void kickPlayer(PunishmentData punishment, Player player) {
+        String dateFormat = plugin.getConfig().getString("punishments.date_format_time");
+        String dateTimezone = plugin.getConfig().getString("punishments.date_timezone");
+
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("start_time_formatted", formatMillis(punishment.getStartTime(), dateFormat, dateTimezone));
+
+        String kickMessage = plugin.getConfig().getString("messages.general.kick.message");
+        String bypassChatMessage = plugin.getConfig().getString("messages.general.kick.bypass");
+
+        placeholders.put("user", player.getName());
+        placeholders.put("executor", punishment.getPunisherUuid());
+        placeholders.put("reason", punishment.getReason());
+        placeholders.put("scope", punishment.getScope());
+        placeholders.put("punishment_id", String.valueOf(punishment.getId()));
+
+        boolean adminBypass = PunishmentsHandler.hasPunishmentBypass(player);
+        boolean notifyAdminBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.notify");
+        if (adminBypass) {
+            if (notifyAdminBypass) {
+                player.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(bypassChatMessage, placeholders)));
+            }
+            logger.verbose(CommandUtils.parseMessageWithPlaceholders(kickMessage, placeholders));
+            return;
+        }
+        player.kick(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(kickMessage, placeholders)), PlayerKickEvent.Cause.KICK_COMMAND);
+    }
 }

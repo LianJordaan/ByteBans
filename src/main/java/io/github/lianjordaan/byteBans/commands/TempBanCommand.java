@@ -16,12 +16,12 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-public class MuteCommand implements CommandExecutor {
+public class TempBanCommand implements CommandExecutor {
     private ByteBans plugin;
     private BBLogger logger;
     private MiniMessage miniMessage = MiniMessage.miniMessage();
 
-    public MuteCommand(ByteBans plugin) {
+    public TempBanCommand(ByteBans plugin) {
         this.plugin = plugin;
         this.logger = plugin.getBBLogger();
     }
@@ -32,14 +32,16 @@ public class MuteCommand implements CommandExecutor {
 
         String[] filteredArgs = Arrays.stream(args).filter(arg -> !arg.equals("-s")).toArray(String[]::new);
 
-        Map<String, String> parsed = CommandUtils.parseArgs(filteredArgs, "user", "reason", "scope");
+        Map<String, String> parsed = CommandUtils.parseArgs(filteredArgs, "user", "time", "reason", "scope");
 
         String username = parsed.get("user");
+        String time = parsed.get("time");
         String reason = parsed.get("reason");
         String scope = parsed.get("scope");
 
-        logger.verbose("Mute command executed.");
+        logger.verbose("Tempmute command executed.");
         logger.verbose("User: " + username);
+        logger.verbose("Time: " + time);
         logger.verbose("Reason: " + reason);
         logger.verbose("Scope: " + scope);
         logger.verbose("Silent: " + silent);
@@ -51,10 +53,6 @@ public class MuteCommand implements CommandExecutor {
             reason = plugin.getConfig().getString("punishments.default_reason", "No reason specified");
         }
 
-        String alreadyMutedMessage = plugin.getConfig().getString("messages.commands.mute.already_muted");
-        String muteErrorMessage = plugin.getConfig().getString("messages.commands.mute.command_error");
-        String invalidUsernameMessage = plugin.getConfig().getString("messages.commands.mute.player_not_found");
-
         String punisherUuid = "CONSOLE";
         String punisherName = "CONSOLE";
         if (sender instanceof Player) {
@@ -64,9 +62,25 @@ public class MuteCommand implements CommandExecutor {
 
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("user", username);
+        placeholders.put("time", time);
         placeholders.put("executor", punisherName);
         placeholders.put("reason", reason);
         placeholders.put("scope", scope);
+
+        String alreadyBannedMessage = plugin.getConfig().getString("messages.commands.tempban.already_banned");
+        String tempBanErrorMessage = plugin.getConfig().getString("messages.commands.tempban.command_error");
+        String invalidUsernameMessage = plugin.getConfig().getString("messages.commands.tempban.player_not_found");
+        String invalidTimeMessage = plugin.getConfig().getString("messages.commands.tempban.time_invalid");
+
+        long parsedTime;
+        try {
+            parsedTime = CommandUtils.parseToMillis(time);
+        } catch (Exception e) {
+            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(invalidTimeMessage, placeholders)));
+            return true;
+        }
+        String formattedTime = CommandUtils.formatDurationNatural(parsedTime);
+        placeholders.put("duration_left", formattedTime);
 
         Result result = CommandUtils.getUuidFromUsername(username);
         if (!result.isSuccess()) {
@@ -77,18 +91,18 @@ public class MuteCommand implements CommandExecutor {
 
         PunishmentsHandler handler = plugin.getPunishmentsHandler();
 
-        boolean isAlreadyMuted = handler.isPlayerMuted(usernameUuid) != null;
-        if (isAlreadyMuted) {
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(alreadyMutedMessage, placeholders)));
+        boolean isAlreadyBanned = handler.isPlayerBanned(usernameUuid) != null;
+        if (isAlreadyBanned) {
+            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(alreadyBannedMessage, placeholders)));
             return true;
         }
 
-        Result muteResult = handler.mutePlayer(usernameUuid, punisherUuid, reason, scope, silent);
-        if (muteResult.isSuccess()) {
-//            sender.sendMessage(miniMessage.deserialize("<green>Successfully muted player."));
+        Result banResult = handler.tempBanPlayer(usernameUuid, punisherUuid, parsedTime, reason, scope, silent);
+        if (banResult.isSuccess()) {
+//            sender.sendMessage(miniMessage.deserialize("<green>Successfully tempbanned player."));
         } else {
-            placeholders.put("error", muteResult.getMessage());
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(muteErrorMessage, placeholders)));
+            placeholders.put("error", banResult.getMessage());
+            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(tempBanErrorMessage, placeholders)));
         }
         return true;
     }

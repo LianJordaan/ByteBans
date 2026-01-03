@@ -99,6 +99,19 @@ available_servers:
 
 
 punishments:
+  # The format for displaying dates
+  # Default: yyyy-MM-dd
+  date_format: "yyyy-MM-dd z"
+
+  # The format for displaying dates and times
+  # Default: yyyy-MM-dd HH:mm:ss
+  date_format_time: "yyyy-MM-dd HH:mm:ss z"
+
+  # The timezone used for displaying dates
+  # Use this website to find the available timezones: https://datetime.app/iana-timezones
+  # Default: UTC
+  date_timezone: "UTC"
+
   # The default punishment scope used when no scope is specified.
   # The scope is used to determine on which servers the punishment is applied.
   # Default: *
@@ -143,3 +156,303 @@ logging:
     #   BOTH - Log to both the console and the server chat
     # Default: BOTH
     type: BOTH
+
+
+# The messages used in the plugin
+messages:
+  # Messages used for certain actions related to punishments
+  general:
+    # Messages used when a muted player tries to chat (temp or permanent)
+    # Placeholders:
+    #   {user} - The muted player who tried to talk
+    #   {duration_left} - The time left until the punishment expires (temp mutes only)
+    muted:
+      # The message sent to a permanently muted player when they try to talk
+      permanent: "<red>You are muted. <red>This punishment is permanent."
+
+      # The message sent to a temporarily muted player when they try to talk
+      temporary: "<red>You are muted. <red>This punishment expires in <green>{duration_left}<red>"
+
+      # The message sent to admins when a muted player tries to talk
+      notification: "<red>{user} tried to speak but is muted."
+
+      # The message sent when a admin has permission to bypass a mute punishment and talks while muted
+      bypass: "<red>You are muted but have permission to bypass this punishment."
+
+    # Messages used when a banned player joins or gets kicked
+    # Placeholders:
+    #   {user} - The banned player who joined
+    #   {executor} - The player/console who executed the ban
+    #   {reason} - The reason given to the ban
+    #   {scope} - The scope given to the ban
+    #   {punishment_id} - The ID of the punishment
+    #   {duration_left} - The time left until the punishment expires
+    #   {start_time_formatted} - The time when the punishment started. Check punishments.date_format
+    banned:
+      # The message used to kick the player when they try to join while being banned
+      # Or when they are online and they get banned and kicked.
+      ban_screen:
+        permanent: |
+          <red>You are banned from this server!<white>
+    
+          Banned on: {start_time_formatted}
+          Banned by: {executor}
+          Reason: {reason}<white>
+    
+          You are permanently banned!
+          <red>Appeal at: <u>discord.gg/example</u>
+        temporary: |
+          <red>You are banned from this server!<white>
+    
+          Banned on: {start_time_formatted}
+          Banned by: {executor}
+          Reason: {reason}<white>
+    
+          Expires in: {duration_left}
+          <red>Appeal at: <u>discord.gg/example</u>
+
+      # The message sent to staff with the bytebans.notify.join_banned permission when a player joins while being banned
+      notification: "<red>{user} tried to join but is banned."
+
+      # The message used when a player is banned but has permission to bypass this punishment
+      bypass: "<red>You are banned but have permission to bypass this punishment."
+
+    # The messages related to when a player is kicked using the kick command
+    # Placeholders:
+    #   {user} - The target player who got kicked
+    #   {executor} - The player/console who executed the kick
+    #   {reason} - The reason given to the kick
+    #   {scope} - The scope given to the kick
+    #   {punishment_id} - The ID of the punishment
+    #   {start_time_formatted_time} - The time when the punishment happened. Check punishments.date_format_time
+    kick:
+      # The message sent to the player when they get kicked
+      message: "<red>You have been kicked by <green>{executor} <red>for '<green>{reason}<red>'"
+
+      # The message used when a player is kicked but has permission to bypass this punishment
+      bypass: "<red>You were kicked but had permission to bypass this punishment."
+
+  # Messages tied to commands
+  commands:
+    # The messages related to the mute command
+    # Placeholders:
+    #   {user} - The target player who got muted
+    #   {executor} - The player/console who executed the mute
+    #   {reason} - The reason given to the mute
+    #   {scope} - The scope given to the mute
+    #   {punishment_id} - The ID of the punishment
+    mute:
+      # The message sent to the player when they get muted
+      message: "<red>You have been muted by <green>{executor} <red>for '<green>{reason}<red>'<newline><red>This punishment is permanent and will never expire"
+
+      # The message sent to all online players when someone gets muted if the punishment is not silent
+      broadcast: "<green>{executor} <white>muted <green>{user}<white> for '<green>{reason}<white>'"
+
+      # The message sent to admins with the bytebans.notify.silent permission when someone gets muted if the punishment is silent
+      broadcast_silent: "<grey>[silent] <reset>{executor} <white>muted <green>{user}<white> for '<green>{reason}<white>'"
+
+      # The message sent when a admin tried to mute a player who is already muted
+      # NOTE: It is not possible to get the punishment ID while the mute command is running
+      already_muted: "<red>{user} is already muted."
+
+      # The error message sent when a admin tries to mute a player but the plugin fails to mute them
+      # NOTE: It is not possible to get the punishment ID while the mute command is running
+      # Special placeholders:
+      #   {error} - The error message returned by the plugin
+      command_error: "<red>Failed to mute player. Error: <u>{error}</u>"
+
+      # The message sent when a player tries to mute a player who could not be found
+      # NOTE: It is not possible to get the punishment ID while the mute command is running
+      player_not_found: "<red>Invalid username: {user}"
+
+    # The messages related to the tempmute command
+    # Placeholders:
+    #   {user} - The target player who got muted
+    #   {executor} - The player/console who executed the mute
+    #   {reason} - The reason given to the mute
+    #   {scope} - The scope given to the mute
+    #   {punishment_id} - The ID of the punishment
+    #   {duration_left} - The time left until the punishment expires
+    #   {time} - The time given to the tempmute
+    tempmute:
+      # The message sent to the player when they get muted
+      message: "<red>You have been muted by <green>{executor} <red>for '<green>{reason}<red>'<newline><red>This punishment expires in <green>{duration_left}<red>"
+
+      # The message sent to all online players when someone gets muted if the punishment is not silent
+      broadcast: "<green>{executor} <white>muted <green>{user}<white> for '<green>{reason}<white>' for <green>{duration_left}<white>"
+
+      # The message sent to admins with the bytebans.notify.silent permission when someone gets muted if the punishment is silent
+      broadcast_silent: "<grey>[silent] <reset>{executor} <white>muted <green>{user}<white> for '<green>{reason}<white>' for <green>{duration_left}<white>"
+
+      # The message sent when a admin tried to tempmute a player who is already muted
+      # NOTE: It is not possible to get the punishment ID while the tempmute command is running
+      already_muted: "<red>{user} is already muted."
+
+      # The error message sent when a admin tries to tempmute a player but the plugin fails to tempmute them
+      # NOTE: It is not possible to get the punishment ID while the tempmute command is running
+      # Special placeholders:
+      #   {error} - The error message returned by the plugin
+      command_error: "<red>Failed to tempmute player. Error: <u>{error}</u>"
+
+      # The message sent when a player tries to tempmute a player who could not be found
+      # NOTE: It is not possible to get the punishment ID while the tempmute command is running
+      player_not_found: "<red>Invalid username: {user}"
+
+      # The message sent when a player tries to tempmute a player but the time is invalid
+      # NOTE: It is not possible to get the punishment ID while the tempmute command is running
+      # NOTE: Does not support the following placeholders:
+      #   {duration_left} - The time left until the punishment expires (because it cant format it if the time is invalid)
+      time_invalid: "<red>Invalid time: {time}"
+
+    # The messages related to the unmute command
+    # Placeholders:
+    #   {user} - The target player who got unmuted
+    #   {executor} - The player/console who executed the unmute
+    #   {reason} - The reason given to the unmute
+    unmute:
+      # The message sent to the player when they get unmuted
+      message: "<red>You have been unmuted by <green>{executor} <red>for '<green>{reason}<red>'"
+
+      # The message sent to all online players when someone gets unmuted if the punishment is not silent
+      broadcast: "<green>{executor} <white>unmuted <green>{user}<white> for '<green>{reason}<white>'"
+
+      # The message sent to admins with the bytebans.notify.silent permission when someone gets unmuted if the punishment is silent
+      broadcast_silent: "<grey>[silent] <reset>{executor} <white>unmuted <green>{user}<white> for '<green>{reason}<white>'"
+
+      # The message sent when a admin tried to unmute a player who is already unmuted
+      # NOTE: It is not possible to get the punishment ID while the unmute command is running
+      already_unmuted: "<red>{user} is not muted."
+
+      # The error message sent when a admin tries to unmute a player but the plugin fails to unmute them
+      # NOTE: It is not possible to get the punishment ID while the unmute command is running
+      # Special placeholders:
+      #   {error} - The error message returned by the plugin
+      command_error: "<red>Failed to unmute player. Error: <u>{error}</u>"
+
+      # The message sent when a player tries to unmute a player who could not be found
+      # NOTE: It is not possible to get the punishment ID while the unmute command is running
+      player_not_found: "<red>Invalid username: {user}"
+
+    # The messages related to the ban command
+    # Placeholders:
+    #   {user} - The target player who got banned
+    #   {executor} - The player/console who executed the ban
+    #   {reason} - The reason given to the ban
+    #   {scope} - The scope given to the ban
+    #   {punishment_id} - The ID of the punishment
+    ban:
+      # The message sent to the player when they get banned
+      message: "<red>You have been banned by <green>{executor} <red>for '<green>{reason}<red>'<newline><red>This punishment is permanent and will never expire"
+
+      # The message sent to all online players when someone gets banned if the punishment is not silent
+      broadcast: "<green>{executor} <white>banned <green>{user}<white> for '<green>{reason}<white>'"
+
+      # The message sent to admins with the bytebans.notify.silent permission when someone gets banned if the punishment is silent
+      broadcast_silent: "<grey>[silent] <reset>{executor} <white>banned <green>{user}<white> for '<green>{reason}<white>'"
+
+      # The message sent when a admin tried to ban a player who is already banned
+      # NOTE: It is not possible to get the punishment ID while the ban command is running
+      already_banned: "<red>{user} is already banned."
+
+      # The error message sent when a admin tries to ban a player but the plugin fails to ban them
+      # NOTE: It is not possible to get the punishment ID while the ban command is running
+      # Special placeholders:
+      #   {error} - The error message returned by the plugin
+      command_error: "<red>Failed to ban player. Error: <u>{error}</u>"
+
+      # The message sent when a player tries to ban a player who could not be found
+      # NOTE: It is not possible to get the punishment ID while the ban command is running
+      player_not_found: "<red>Invalid username: {user}"
+
+    # The messages related to the tempban command
+    # Placeholders:
+    #   {user} - The target player who got banned
+    #   {executor} - The player/console who executed the ban
+    #   {reason} - The reason given to the ban
+    #   {scope} - The scope given to the ban
+    #   {punishment_id} - The ID of the punishment
+    #   {duration_left} - The time left until the punishment expires
+    #   {time} - The time given to the tempban
+    tempban:
+      # The message sent to the player when they get banned
+      message: "<red>You have been banned by <green>{executor} <red>for '<green>{reason}<red>'<newline><red>This punishment expires in <green>{duration_left}<red>"
+
+      # The message sent to all online players when someone gets banned if the punishment is not silent
+      broadcast: "<green>{executor} <white>banned <green>{user}<white> for '<green>{reason}<white>' for <green>{duration_left}<white>"
+
+      # The message sent to admins with the bytebans.notify.silent permission when someone gets banned if the punishment is silent
+      broadcast_silent: "<grey>[silent] <reset>{executor} <white>banned <green>{user}<white> for '<green>{reason}<white>' for <green>{duration_left}<white>"
+
+      # The message sent when a admin tried to tempban a player who is already banned
+      # NOTE: It is not possible to get the punishment ID while the tempban command is running
+      already_banned: "<red>{user} is already banned."
+
+      # The error message sent when a admin tries to tempban a player but the plugin fails to tempban them
+      # NOTE: It is not possible to get the punishment ID while the tempban command is running
+      # Special placeholders:
+      #   {error} - The error message returned by the plugin
+      command_error: "<red>Failed to tempban player. Error: <u>{error}</u>"
+
+      # The message sent when a player tries to tempban a player who could not be found
+      # NOTE: It is not possible to get the punishment ID while the tempban command is running
+      player_not_found: "<red>Invalid username: {user}"
+
+      # The message sent when a player tries to tempban a player but the time is invalid
+      # NOTE: It is not possible to get the punishment ID while the tempban command is running
+      # NOTE: Does not support the following placeholders:
+      #   {duration_left} - The time left until the punishment expires (because it cant format it if the time is invalid)
+      time_invalid: "<red>Invalid time: {time}"
+
+    # The messages related to the unban command
+    # Placeholders:
+    #   {user} - The target player who got unbanned
+    #   {executor} - The player/console who executed the unban
+    #   {reason} - The reason given to the unban
+    unban:
+      # The message send to all online players when someone gets unbanned if the punishment is not silent
+      broadcast: "<green>{executor} <white>unbanned <green>{user}<white> for '<green>{reason}<white>'"
+
+      # The message sent to admins with the bytebans.notify.silent permission when someone gets unbanned if the punishment is silent
+      broadcast_silent: "<grey>[silent] <reset>{executor} <white>unbanned <green>{user}<white> for '<green>{reason}<white>'"
+
+      # The message sent when a admin tried to unban a player who is already unbanned
+      # NOTE: It is not possible to get the punishment ID while the unban command is running
+      already_unbanned: "<red>{user} is not banned."
+
+      # The error message sent when a admin tries to unban a player but the plugin fails to unban them
+      # NOTE: It is not possible to get the punishment ID while the unban command is running
+      # Special placeholders:
+      #   {error} - The error message returned by the plugin
+      command_error: "<red>Failed to unban player. Error: <u>{error}</u>"
+
+      # The message sent when a player tries to unban a player who could not be found
+      # NOTE: It is not possible to get the punishment ID while the unban command is running
+      player_not_found: "<red>Invalid username: {user}"
+
+    # The messages related to the kick command
+    # Placeholders:
+    #   {user} - The target player who got kicked
+    #   {executor} - The player/console who executed the kick
+    #   {reason} - The reason given to the kick
+    #   {scope} - The scope given to the kick
+    #   {punishment_id} - The ID of the punishment
+    #   {start_time_formatted_time} - The time when the punishment happened. Check punishments.date_format_time
+    kick:
+      # The message sent to the player when they get kicked
+      message: "<red>You have been kicked by <green>{executor} <red>for '<green>{reason}<red>'"
+
+      # The message sent to all online players when someone gets kicked if the punishment is not silent
+      broadcast: "<green>{executor} <white>kicked <green>{user}<white> for '<green>{reason}<white>'"
+
+      # The message sent to admins with the bytebans.notify.silent permission when someone gets kicked if the punishment is silent
+      broadcast_silent: "<grey>[silent] <reset>{executor} <white>kicked <green>{user}<white> for '<green>{reason}<white>'"
+
+      # The error message sent when a admin tries to kick a player but the plugin fails to kick them
+      # NOTE: It is not possible to get the punishment ID while the kick command is running
+      # Special placeholders:
+      #   {error} - The error message returned by the plugin
+      command_error: "<red>Failed to kick player. Error: <u>{error}</u>"
+
+      # The message sent when a player tries to kick a player who could not be found
+      # NOTE: It is not possible to get the punishment ID while the kick command is running
+      player_not_found: "<red>Invalid username: {user}"

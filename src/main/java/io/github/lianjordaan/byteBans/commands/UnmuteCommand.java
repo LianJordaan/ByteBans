@@ -13,6 +13,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 
 public class UnmuteCommand implements CommandExecutor {
@@ -45,31 +46,43 @@ public class UnmuteCommand implements CommandExecutor {
             reason = plugin.getConfig().getString("punishments.default_reason", "No reason specified");
         }
 
+        String punisherUuid = "CONSOLE";
+        String punisherName = "CONSOLE";
+        if (sender instanceof Player) {
+            punisherUuid = ((Player) sender).getUniqueId().toString();
+            punisherName = sender.getName();
+        }
+
+        String alreadyUnmutedMessage = plugin.getConfig().getString("messages.commands.unmute.already_unmuted");
+        String unmuteErrorMessage = plugin.getConfig().getString("messages.commands.unmute.command_error");
+        String invalidUsernameMessage = plugin.getConfig().getString("messages.commands.unmute.player_not_found");
+
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("user", username);
+        placeholders.put("executor", punisherName);
+        placeholders.put("reason", reason);
+
         Result result = CommandUtils.getUuidFromUsername(username);
         if (!result.isSuccess()) {
-            sender.sendMessage(miniMessage.deserialize("<red>Invalid username: " + username));
+            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(invalidUsernameMessage, placeholders)));
             return true;
         }
         String usernameUuid = result.getMessage();
 
         PunishmentsHandler handler = plugin.getPunishmentsHandler();
 
-        String uuid = "CONSOLE";
-        if (sender instanceof Player) {
-            uuid = ((Player) sender).getUniqueId().toString();
-        }
-
-        boolean isAlreadyMuted = handler.isPlayerMuted(usernameUuid) != null;
-        if (!isAlreadyMuted) {
-            sender.sendMessage(miniMessage.deserialize("<red>That player is not muted.</red>"));
+        boolean isMuted = handler.isPlayerMuted(usernameUuid) != null;
+        if (!isMuted) {
+            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(alreadyUnmutedMessage, placeholders)));
             return true;
         }
 
-        Result unmuteResult = handler.unmutePlayer(usernameUuid, uuid, reason, null, silent);
+        Result unmuteResult = handler.unmutePlayer(usernameUuid, punisherUuid, reason, null, silent);
         if (unmuteResult.isSuccess()) {
-            sender.sendMessage(miniMessage.deserialize("<green>Successfully unmuted player."));
+//            sender.sendMessage(miniMessage.deserialize("<green>Successfully unmuted player."));
         } else {
-            sender.sendMessage(miniMessage.deserialize("<red>Failed to mute player. Error: <u>" + unmuteResult.getMessage() + "</u>"));
+            placeholders.put("error", unmuteResult.getMessage());
+            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(unmuteErrorMessage, placeholders)));
         }
         return true;
     }

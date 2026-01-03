@@ -16,12 +16,12 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-public class MuteCommand implements CommandExecutor {
+public class KickCommand implements CommandExecutor {
     private ByteBans plugin;
     private BBLogger logger;
     private MiniMessage miniMessage = MiniMessage.miniMessage();
 
-    public MuteCommand(ByteBans plugin) {
+    public KickCommand(ByteBans plugin) {
         this.plugin = plugin;
         this.logger = plugin.getBBLogger();
     }
@@ -38,7 +38,7 @@ public class MuteCommand implements CommandExecutor {
         String reason = parsed.get("reason");
         String scope = parsed.get("scope");
 
-        logger.verbose("Mute command executed.");
+        logger.verbose("Kick command executed.");
         logger.verbose("User: " + username);
         logger.verbose("Reason: " + reason);
         logger.verbose("Scope: " + scope);
@@ -51,9 +51,9 @@ public class MuteCommand implements CommandExecutor {
             reason = plugin.getConfig().getString("punishments.default_reason", "No reason specified");
         }
 
-        String alreadyMutedMessage = plugin.getConfig().getString("messages.commands.mute.already_muted");
-        String muteErrorMessage = plugin.getConfig().getString("messages.commands.mute.command_error");
-        String invalidUsernameMessage = plugin.getConfig().getString("messages.commands.mute.player_not_found");
+
+        String kickErrorMessage = plugin.getConfig().getString("messages.commands.kick.command_error");
+        String invalidUsernameMessage = plugin.getConfig().getString("messages.commands.kick.player_not_found");
 
         String punisherUuid = "CONSOLE";
         String punisherName = "CONSOLE";
@@ -77,18 +77,12 @@ public class MuteCommand implements CommandExecutor {
 
         PunishmentsHandler handler = plugin.getPunishmentsHandler();
 
-        boolean isAlreadyMuted = handler.isPlayerMuted(usernameUuid) != null;
-        if (isAlreadyMuted) {
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(alreadyMutedMessage, placeholders)));
-            return true;
-        }
-
-        Result muteResult = handler.mutePlayer(usernameUuid, punisherUuid, reason, scope, silent);
-        if (muteResult.isSuccess()) {
-//            sender.sendMessage(miniMessage.deserialize("<green>Successfully muted player."));
+        boolean kickResult = handler.kickPlayer(usernameUuid, punisherUuid, reason, scope, silent);
+        if (kickResult) {
+//            sender.sendMessage(miniMessage.deserialize("<green>Successfully kickned player."));
         } else {
-            placeholders.put("error", muteResult.getMessage());
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(muteErrorMessage, placeholders)));
+            placeholders.put("error", "Unknown error");
+            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(kickErrorMessage, placeholders)));
         }
         return true;
     }
