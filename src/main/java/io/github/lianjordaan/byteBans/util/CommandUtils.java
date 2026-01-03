@@ -156,7 +156,7 @@ public class CommandUtils {
 
     public static Result getUuidFromUsername(String username) {
         for (OfflinePlayer player : Bukkit.getOfflinePlayers()) {
-            if (player.getName().equalsIgnoreCase(username)) {
+            if (player.getName() != null && player.getName().equalsIgnoreCase(username)) {
                 return new Result(true, player.getUniqueId().toString());
             }
         }

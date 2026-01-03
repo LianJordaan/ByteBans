@@ -45,6 +45,7 @@ public class PunishmentUpdater {
             public void run() {
                 try {
                     String prefix = plugin.getDatabaseTablePrefix();
+                    plugin.getPunishmentsHandler().markExpiredPunishmentsInactive();
 
                     long newLastUpdateId = DatabaseUtils.getLastUpdateId(connection, prefix, lastProcessedUpdateId);
                     if (newLastUpdateId > lastProcessedUpdateId) {

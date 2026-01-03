@@ -1,8 +1,6 @@
 package io.github.lianjordaan.byteBans;
 
-import io.github.lianjordaan.byteBans.commands.MuteCommand;
-import io.github.lianjordaan.byteBans.commands.RemovePunishmentCommand;
-import io.github.lianjordaan.byteBans.commands.TempMuteCommand;
+import io.github.lianjordaan.byteBans.commands.*;
 import io.github.lianjordaan.byteBans.database.Database;
 import io.github.lianjordaan.byteBans.database.MySQLDatabase;
 import io.github.lianjordaan.byteBans.database.SQLiteDatabase;
@@ -10,7 +8,6 @@ import io.github.lianjordaan.byteBans.listeners.ChatListener;
 import io.github.lianjordaan.byteBans.punishments.PunishmentUpdater;
 import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
 import io.github.lianjordaan.byteBans.servers.AvailableServersScanner;
-import io.github.lianjordaan.byteBans.commands.TabCompleter;
 import io.github.lianjordaan.byteBans.util.BBLogger;
 import io.github.lianjordaan.byteBans.util.DatabaseUtils;
 import org.bukkit.Bukkit;
@@ -42,10 +39,10 @@ public final class ByteBans extends JavaPlugin {
     public void onEnable() {
 
         // remove config.yml if it exists
-        File configFile = new File(getDataFolder(), "config.yml");
-        if (configFile.exists()) {
-            configFile.delete();
-        }
+//        File configFile = new File(getDataFolder(), "config.yml");
+//        if (configFile.exists()) {
+//            configFile.delete();
+//        }
 
         // Plugin startup logic
         saveDefaultConfig();
@@ -161,7 +158,8 @@ public final class ByteBans extends JavaPlugin {
             logger.verbose("Registered mute command.");
             getCommand("tempmute").setExecutor(new TempMuteCommand(this));
             logger.verbose("Registered tempmute command.");
-//            getCommand("unmute").setExecutor(new unmuteCommand(this));
+            getCommand("unmute").setExecutor(new UnmuteCommand(this));
+            logger.verbose("Registered unmute command.");
 //            getCommand("ban").setExecutor(new banCommand(this));
 //            getCommand("unban").setExecutor(new unbanCommand(this));
 //            getCommand("tempban").setExecutor(new tempBanCommand(this));
@@ -181,7 +179,8 @@ public final class ByteBans extends JavaPlugin {
             logger.verbose("Registered mute tab completer.");
             getCommand("tempmute").setTabCompleter(new TabCompleter(this));
             logger.verbose("Registered tempmute tab completer.");
-//            getCommand("unmute").setTabCompleter(new unmuteCommand(this));
+            getCommand("unmute").setTabCompleter(new TabCompleter(this));
+            logger.verbose("Registered unmute tab completer.");
 //            getCommand("ban").setTabCompleter(new banCommand(this));
 //            getCommand("unban").setTabCompleter(new unbanCommand(this));
 //            getCommand("tempban").setTabCompleter(new tempBanCommand(this));

@@ -97,6 +97,31 @@ public class PunishmentsHandler {
         return activePunishments;
     }
 
+    // Keeps active punishments (not expired)
+    public Map<Long, PunishmentData> getNotExpiredPunishments(Map<Long, PunishmentData> punishments) {
+        Map<Long, PunishmentData> filtered = new HashMap<>();
+        for (Map.Entry<Long, PunishmentData> entry : punishments.entrySet()) {
+            PunishmentData punishment = entry.getValue();
+            if (punishment.getDuration() == 0 || punishment.getStartTime() + punishment.getDuration() > System.currentTimeMillis()) {
+                filtered.put(entry.getKey(), punishment);
+            }
+        }
+        return filtered;
+    }
+
+    // Keeps expired punishments
+    public Map<Long, PunishmentData> getExpiredPunishments(Map<Long, PunishmentData> punishments) {
+        Map<Long, PunishmentData> filtered = new HashMap<>();
+        for (Map.Entry<Long, PunishmentData> entry : punishments.entrySet()) {
+            PunishmentData punishment = entry.getValue();
+            // Permanent punishments (duration == 0) are NOT expired
+            if (punishment.getDuration() > 0 && punishment.getStartTime() + punishment.getDuration() <= System.currentTimeMillis()) {
+                filtered.put(entry.getKey(), punishment);
+            }
+        }
+        return filtered;
+    }
+
     public boolean isPunishmentPermanent(PunishmentData punishment) {
         if (punishment == null) return false;
         return punishment.getDuration() == 0;
@@ -137,8 +162,8 @@ public class PunishmentsHandler {
         return null;
     }
 
-    public Result unmutePlayer(String uuid, String punisherUuid, String reason, String scope, Long id, boolean silent) {
-        Map<Long, PunishmentData> activePunishments = getActivePunishments(uuid);
+    public Result unmutePlayer(String uuid, String punisherUuid, String reason, Long id, boolean silent) {
+        Map<Long, PunishmentData> activePunishments = getNotExpiredPunishments(getActivePunishments(uuid));
         if (id == null) {
             for (Map.Entry<Long, PunishmentData> entry : activePunishments.entrySet()) {
                 if (entry.getValue().getType().equalsIgnoreCase("mute")) {
@@ -147,12 +172,14 @@ public class PunishmentsHandler {
                 }
             }
         }
+        logger.verbose("Unmute ID: " + id);
+        logger.verbose("<yellow>Pinishment to unmute: " + punishments.get(id).toString() + "</yellow>");
         if (id != null) {
             PunishmentData punishment = punishments.get(id);
             punishment.setActive(false);
             punishment.setUpdatedAt(System.currentTimeMillis());
 
-            punishPlayer(uuid, punisherUuid, "unmute", reason, scope, 0, false, silent);
+            punishPlayer(uuid, punisherUuid, "unmute", reason, "*", 0, false, silent);
             boolean success = makePunishmentInactiveInDatabase(id);
             if (success) {
                 return new Result(true, "Successfully unmuted player.");
@@ -164,7 +191,7 @@ public class PunishmentsHandler {
     }
 
     public Result unBanPlayer(String uuid, String punisherUuid, String reason, String scope, Long id, boolean silent) {
-        Map<Long, PunishmentData> activePunishments = getActivePunishments(uuid);
+        Map<Long, PunishmentData> activePunishments = getNotExpiredPunishments(getActivePunishments(uuid));
         if (id == null) {
             for (Map.Entry<Long, PunishmentData> entry : activePunishments.entrySet()) {
                 if (entry.getValue().getType().equalsIgnoreCase("ban")) {
@@ -190,7 +217,7 @@ public class PunishmentsHandler {
     }
 
     public Result unWarnPlayer(String uuid, String punisherUuid, String reason, String scope, Long id) {
-        Map<Long, PunishmentData> activePunishments = getActivePunishments(uuid);
+        Map<Long, PunishmentData> activePunishments = getNotExpiredPunishments(getActivePunishments(uuid));
         if (id == null) {
             for (Map.Entry<Long, PunishmentData> entry : activePunishments.entrySet()) {
                 if (entry.getValue().getType().equalsIgnoreCase("warn")) {
@@ -216,7 +243,7 @@ public class PunishmentsHandler {
     }
 
     public Result removeNote(String uuid, String punisherUuid, String reason, String scope, Long id) {
-        Map<Long, PunishmentData> activePunishments = getActivePunishments(uuid);
+        Map<Long, PunishmentData> activePunishments = getNotExpiredPunishments(getActivePunishments(uuid));
         if (id == null) {
             for (Map.Entry<Long, PunishmentData> entry : activePunishments.entrySet()) {
                 if (entry.getValue().getType().equalsIgnoreCase("note")) {
@@ -468,6 +495,8 @@ public class PunishmentsHandler {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 if (player.hasPermission("bytebans.notify.silent")) {
                     player.sendMessage(miniMessage.deserialize("<grey>[silent] <reset>" + message));
+                } else if (player.getUniqueId().toString().equalsIgnoreCase(punishedPlayer)) {
+                    player.sendMessage(miniMessage.deserialize(message));
                 }
             }
             logger.info("[silent] " + message);
@@ -532,4 +561,25 @@ public class PunishmentsHandler {
         boolean permissionBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.allow_permission") && player.hasPermission("bytebans.bypass");
         return operatorBypass || permissionBypass;
     }
+
+    public boolean markExpiredPunishmentsInactive() {
+        try {
+            // The query sets active = false for all punishments that have a duration > 0
+            // and where start_time + duration <= current time (i.e., they are expired)
+            String query = "UPDATE " + plugin.getDatabaseTablePrefix() + "punishments " +
+                    "SET active = ? " +
+                    "WHERE duration > 0 AND (start_time + duration) <= ?";
+
+            long now = System.currentTimeMillis();
+
+            DatabaseUtils.executeUpdate(connection, query, false, now);
+
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            logger.error("Failed to mark expired punishments inactive!", e);
+            return false;
+        }
+    }
+
 }

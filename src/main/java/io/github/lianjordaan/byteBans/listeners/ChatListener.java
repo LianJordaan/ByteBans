@@ -4,6 +4,7 @@ import io.github.lianjordaan.byteBans.ByteBans;
 import io.github.lianjordaan.byteBans.model.PunishmentData;
 import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
 import io.github.lianjordaan.byteBans.util.BBLogger;
+import io.github.lianjordaan.byteBans.util.CommandUtils;
 import io.papermc.paper.chat.ChatRenderer;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.audience.Audience;
@@ -55,7 +56,16 @@ public class ChatListener implements Listener {
                 }
                 return;
             } else {
-                player.sendMessage(miniMessage.deserialize("<red>You are muted.</red>"));
+                boolean permanent = mutedPunishment.getDuration() == 0;
+                long endTime = mutedPunishment.getStartTime() + mutedPunishment.getDuration();
+                String expiresIn = CommandUtils.formatDurationNatural(endTime - System.currentTimeMillis());
+
+                String message = "<red>You are muted. <red>This punishment is permanent.";
+                if (!permanent) {
+                    message = "<red>You are muted. <newline><green>This punishment expires in " + expiresIn + ".";
+                }
+
+                player.sendMessage(miniMessage.deserialize(message));
                 event.setCancelled(true);
                 return;
             }
