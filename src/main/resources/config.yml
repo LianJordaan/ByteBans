@@ -147,7 +147,7 @@ logging:
   verbose:
     # Whether to enable verbose logging
     # Default: true
-    enabled: true
+    enabled: false
 
     # Where verbose logs should go.
     # Options:
@@ -192,7 +192,7 @@ messages:
       # The message used to kick the player when they try to join while being banned
       # Or when they are online and they get banned and kicked.
       ban_screen:
-        permanent: |
+        permanent: |-
           <red>You are banned from this server!<white>
     
           Banned on: {start_time_formatted}
@@ -201,7 +201,7 @@ messages:
     
           You are permanently banned!
           <red>Appeal at: <u>discord.gg/example</u>
-        temporary: |
+        temporary: |-
           <red>You are banned from this server!<white>
     
           Banned on: {start_time_formatted}

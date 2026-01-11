@@ -42,6 +42,10 @@ public class ChatListener implements Listener {
 
         String serverName = plugin.getConfig().getString("server.name", "*");
 
+        logger.verbose("<red>DEBUG");
+        logger.verbose(plugin.getConfig().getString("messages.general.banned.ban_screen.permanent"));
+        logger.verbose(CommandUtils.parseMessageWithPlaceholders(plugin.getConfig().getString("messages.general.banned.ban_screen.permanent"), new HashMap<>()));
+
         if (mutedPunishment != null) {
             String scope = mutedPunishment.getScope();
 

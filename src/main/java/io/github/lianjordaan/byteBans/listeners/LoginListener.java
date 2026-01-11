@@ -59,9 +59,9 @@ public class LoginListener implements Listener {
 
             placeholders.put("start_time_formatted", handler.formatMillis(bannedPunishment.getStartTime(), dateFormat, dateTimezone));
             if (permanent) {
-                banMessage  = plugin.getConfig().getString("messages.general.banned.permanent");
+                banMessage  = plugin.getConfig().getString("messages.general.banned.ban_screen.permanent");
             } else {
-                banMessage = plugin.getConfig().getString("messages.general.banned.temporary");
+                banMessage = plugin.getConfig().getString("messages.general.banned.ban_screen.temporary");
                 long endTime = bannedPunishment.getStartTime() + bannedPunishment.getDuration();
                 String expiresIn = CommandUtils.formatDurationNatural(endTime - System.currentTimeMillis());
                 placeholders.put("duration_left", expiresIn);
@@ -102,8 +102,8 @@ public class LoginListener implements Listener {
                     }
                 }
 
-                player.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(banMessage, placeholders)));
-                event.disallow(PlayerLoginEvent.Result.KICK_BANNED, miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(banMessage, placeholders)));
+                logger.verbose(CommandUtils.parseMessageWithPlaceholders(banMessage, placeholders));
+                event.disallow(PlayerLoginEvent.Result.KICK_OTHER, miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(banMessage, placeholders)));
                 return;
             }
         }

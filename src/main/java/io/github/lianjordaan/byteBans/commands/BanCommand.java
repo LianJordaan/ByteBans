@@ -6,6 +6,7 @@ import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
 import io.github.lianjordaan.byteBans.util.BBLogger;
 import io.github.lianjordaan.byteBans.util.CommandUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -55,11 +56,13 @@ public class BanCommand implements CommandExecutor {
         String banErrorMessage = plugin.getConfig().getString("messages.commands.ban.command_error");
         String invalidUsernameMessage = plugin.getConfig().getString("messages.commands.ban.player_not_found");
 
-        String punisherUuid = "CONSOLE";
+        String punisherUuid;
         String punisherName = "CONSOLE";
         if (sender instanceof Player) {
             punisherUuid = ((Player) sender).getUniqueId().toString();
             punisherName = sender.getName();
+        } else {
+            punisherUuid = "CONSOLE";
         }
 
         Map<String, String> placeholders = new HashMap<>();
@@ -83,13 +86,19 @@ public class BanCommand implements CommandExecutor {
             return true;
         }
 
-        Result banResult = handler.banPlayer(usernameUuid, punisherUuid, reason, scope, silent);
-        if (banResult.isSuccess()) {
+        String finalReason = reason;
+        String finalScope = scope;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Result banResult = handler.banPlayer(usernameUuid, punisherUuid, finalReason, finalScope, silent);
+            if (banResult.isSuccess()) {
 //            sender.sendMessage(miniMessage.deserialize("<green>Successfully banned player."));
-        } else {
-            placeholders.put("error", banResult.getMessage());
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(banErrorMessage, placeholders)));
-        }
+            } else {
+                placeholders.put("error", banResult.getMessage());
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(banErrorMessage, placeholders)));
+                });
+            }
+        });
         return true;
     }
 }

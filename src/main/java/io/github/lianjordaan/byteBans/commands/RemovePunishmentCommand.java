@@ -5,6 +5,7 @@ import io.github.lianjordaan.byteBans.model.Result;
 import io.github.lianjordaan.byteBans.util.BBLogger;
 import io.github.lianjordaan.byteBans.util.CommandUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -40,17 +41,24 @@ public class RemovePunishmentCommand implements CommandExecutor {
             sender.sendMessage(miniMessage.deserialize("<red>Invalid ID: " + id));
             return true;
         }
-        String uuid = "CONSOLE";
+        String uuid;
         if (sender instanceof Player) {
             uuid = ((Player) sender).getUniqueId().toString();
+        } else {
+            uuid = "CONSOLE";
         }
 
-        Result result = plugin.getPunishmentsHandler().removePunishment(uuid, idNum);
-        if (result.isSuccess()) {
-            sender.sendMessage(miniMessage.deserialize("<green>Successfully removed punishment."));
-        } else {
-            sender.sendMessage(miniMessage.deserialize("<red>Failed to remove punishment. Error: <u>" + result.getMessage() + "</u>"));
-        }
+        long finalIdNum = idNum;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Result result = plugin.getPunishmentsHandler().removePunishment(uuid, finalIdNum);
+            if (result.isSuccess()) {
+                sender.sendMessage(miniMessage.deserialize("<green>Successfully removed punishment."));
+            } else {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(miniMessage.deserialize("<red>Failed to remove punishment. Error: <u>" + result.getMessage() + "</u>"));
+                });
+            }
+        });
         return true;
     }
 }

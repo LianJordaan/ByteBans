@@ -6,6 +6,7 @@ import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
 import io.github.lianjordaan.byteBans.util.BBLogger;
 import io.github.lianjordaan.byteBans.util.CommandUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -46,11 +47,13 @@ public class UnmuteCommand implements CommandExecutor {
             reason = plugin.getConfig().getString("punishments.default_reason", "No reason specified");
         }
 
-        String punisherUuid = "CONSOLE";
+        String punisherUuid;
         String punisherName = "CONSOLE";
         if (sender instanceof Player) {
             punisherUuid = ((Player) sender).getUniqueId().toString();
             punisherName = sender.getName();
+        } else {
+            punisherUuid = "CONSOLE";
         }
 
         String alreadyUnmutedMessage = plugin.getConfig().getString("messages.commands.unmute.already_unmuted");
@@ -77,13 +80,18 @@ public class UnmuteCommand implements CommandExecutor {
             return true;
         }
 
-        Result unmuteResult = handler.unmutePlayer(usernameUuid, punisherUuid, reason, null, silent);
-        if (unmuteResult.isSuccess()) {
+        String finalReason = reason;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Result unmuteResult = handler.unmutePlayer(usernameUuid, punisherUuid, finalReason, null, silent);
+            if (unmuteResult.isSuccess()) {
 //            sender.sendMessage(miniMessage.deserialize("<green>Successfully unmuted player."));
-        } else {
-            placeholders.put("error", unmuteResult.getMessage());
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(unmuteErrorMessage, placeholders)));
-        }
+            } else {
+                placeholders.put("error", unmuteResult.getMessage());
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(unmuteErrorMessage, placeholders)));
+                });
+            }
+        });
         return true;
     }
 }

@@ -6,6 +6,7 @@ import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
 import io.github.lianjordaan.byteBans.util.BBLogger;
 import io.github.lianjordaan.byteBans.util.CommandUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -55,11 +56,13 @@ public class MuteCommand implements CommandExecutor {
         String muteErrorMessage = plugin.getConfig().getString("messages.commands.mute.command_error");
         String invalidUsernameMessage = plugin.getConfig().getString("messages.commands.mute.player_not_found");
 
-        String punisherUuid = "CONSOLE";
+        String punisherUuid;
         String punisherName = "CONSOLE";
         if (sender instanceof Player) {
             punisherUuid = ((Player) sender).getUniqueId().toString();
             punisherName = sender.getName();
+        } else {
+            punisherUuid = "CONSOLE";
         }
 
         Map<String, String> placeholders = new HashMap<>();
@@ -83,13 +86,19 @@ public class MuteCommand implements CommandExecutor {
             return true;
         }
 
-        Result muteResult = handler.mutePlayer(usernameUuid, punisherUuid, reason, scope, silent);
-        if (muteResult.isSuccess()) {
+        String finalReason = reason;
+        String finalScope = scope;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Result muteResult = handler.mutePlayer(usernameUuid, punisherUuid, finalReason, finalScope, silent);
+            if (muteResult.isSuccess()) {
 //            sender.sendMessage(miniMessage.deserialize("<green>Successfully muted player."));
-        } else {
-            placeholders.put("error", muteResult.getMessage());
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(muteErrorMessage, placeholders)));
-        }
+            } else {
+                placeholders.put("error", muteResult.getMessage());
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(muteErrorMessage, placeholders)));
+                });
+            }
+        });
         return true;
     }
 }

@@ -71,6 +71,7 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
             case "ban": keys = new ArrayList<>(BAN_KEYS); break;
             case "tempban": keys = new ArrayList<>(TEMPBAN_KEYS); break;
             case "unban": keys = new ArrayList<>(UNBAN_KEYS); break;
+            case "kick": keys = new ArrayList<>(KICK_KEYS); break;
             case "removepunishment": keys = new ArrayList<>(REMOVEPUNISHMENT_KEYS); break;
             default: return Collections.emptyList();
         }

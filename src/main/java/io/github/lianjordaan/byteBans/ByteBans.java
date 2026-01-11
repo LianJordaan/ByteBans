@@ -40,10 +40,10 @@ public final class ByteBans extends JavaPlugin {
     public void onEnable() {
 
         // remove config.yml if it exists
-        File configFile = new File(getDataFolder(), "config.yml");
-        if (configFile.exists()) {
-            configFile.delete();
-        }
+//        File configFile = new File(getDataFolder(), "config.yml");
+//        if (configFile.exists()) {
+//            configFile.delete();
+//        }
 
         // Plugin startup logic
         saveDefaultConfig();
@@ -166,6 +166,7 @@ public final class ByteBans extends JavaPlugin {
             getCommand("kick").setExecutor(new KickCommand(this));
 
             getCommand("removepunishment").setExecutor(new RemovePunishmentCommand(this));
+            getCommand("refreshpunishments").setExecutor(new RefreshPunishmentCommand(this));
         } catch (Exception e) {
             logger.error("Failed to initialize plugin commands!", e);
             e.printStackTrace();

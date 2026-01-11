@@ -513,6 +513,7 @@ public class PunishmentsHandler {
                 message = "<red>If you are seeing this.. There is either a HUGE problem with the logic of the universe or you have permission bypass...";
                 broadcast = unBanBroadcast;
                 broadcastSilent = unBanBroadcastSilent;
+                break;
             case "unmute":
                 message = unMuteMessage;
                 broadcast = unMuteBroadcast;
@@ -545,23 +546,29 @@ public class PunishmentsHandler {
         } else {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 player.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(broadcast, placeholders)));
+                if (player.getUniqueId().toString().equalsIgnoreCase(punishedPlayer)) {
+                    player.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(message, placeholders)));
+                }
             }
             logger.info(CommandUtils.parseMessageWithPlaceholders(broadcast, placeholders));
         }
-        if ("ban".equalsIgnoreCase(punishment.getType())) {
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                if (Objects.equals(punishment.getUuid(), player.getUniqueId().toString())) {
-                    kickBannedPlayer(punishment, player);
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if ("ban".equalsIgnoreCase(punishment.getType())) {
+                for (Player player : Bukkit.getOnlinePlayers()) {
+                    if (Objects.equals(punishment.getUuid(), player.getUniqueId().toString())) {
+                        kickBannedPlayer(punishment, player);
+                    }
                 }
             }
-        }
-        if ("kick".equalsIgnoreCase(punishment.getType())) {
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                if (Objects.equals(punishment.getUuid(), player.getUniqueId().toString())) {
-                    kickPlayer(punishment, player);
+            if ("kick".equalsIgnoreCase(punishment.getType())) {
+                for (Player player : Bukkit.getOnlinePlayers()) {
+                    if (Objects.equals(punishment.getUuid(), player.getUniqueId().toString())) {
+                        kickPlayer(punishment, player);
+                    }
                 }
             }
-        }
+        });
     }
 
     /**
@@ -677,6 +684,12 @@ public class PunishmentsHandler {
         placeholders.put("punishment_id", String.valueOf(punishment.getId()));
         placeholders.put("duration_left", CommandUtils.formatDurationNatural(punishment.getDuration()));
 
+        PunishmentsHandler handler = plugin.getPunishmentsHandler();
+        String serverName = plugin.getConfig().getString("server.name", "*");
+        if (!handler.matchesScope(punishment.getScope(), serverName)) {
+            return;
+        }
+
         boolean adminBypass = PunishmentsHandler.hasPunishmentBypass(player);
         boolean notifyAdminBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.notify");
         if (adminBypass) {
@@ -699,8 +712,26 @@ public class PunishmentsHandler {
         String kickMessage = plugin.getConfig().getString("messages.general.kick.message");
         String bypassChatMessage = plugin.getConfig().getString("messages.general.kick.bypass");
 
+        String punisherUuid = "CONSOLE";
+        String punisherName = "CONSOLE";
+        if (!"CONSOLE".equalsIgnoreCase(punishment.getPunisherUuid())) {
+            punisherUuid = punishment.getPunisherUuid();
+            Result result = CommandUtils.getUsernameFromUuid(punishment.getPunisherUuid());
+            if (result.isSuccess()) {
+                punisherName = result.getMessage();
+            } else {
+                punisherName = "UNKNOWN";
+            }
+        }
+
+        PunishmentsHandler handler = plugin.getPunishmentsHandler();
+        String serverName = plugin.getConfig().getString("server.name", "*");
+        if (!handler.matchesScope(punishment.getScope(), serverName)) {
+            return;
+        }
+
         placeholders.put("user", player.getName());
-        placeholders.put("executor", punishment.getPunisherUuid());
+        placeholders.put("executor", punisherName);
         placeholders.put("reason", punishment.getReason());
         placeholders.put("scope", punishment.getScope());
         placeholders.put("punishment_id", String.valueOf(punishment.getId()));

@@ -36,6 +36,10 @@ commands:
     description: Removes a punishment
     usage: /removepunishment <punishment ID>
     permission: bytebans.removepunishment
+  refreshpunishments:
+    description: Refreshes the punishments
+    usage: /refreshpunishments
+    permission: bytebans.refreshpunishments
 permissions:
   bytebans.notify.silent:
     description: Allows the player to see silent punishments

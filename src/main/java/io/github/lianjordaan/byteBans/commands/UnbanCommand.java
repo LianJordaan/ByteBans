@@ -6,6 +6,7 @@ import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
 import io.github.lianjordaan.byteBans.util.BBLogger;
 import io.github.lianjordaan.byteBans.util.CommandUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -37,7 +38,7 @@ public class UnbanCommand implements CommandExecutor {
         String username = parsed.get("user");
         String reason = parsed.get("reason");
 
-        logger.verbose("Unmute command executed.");
+        logger.verbose("Unban command executed.");
         logger.verbose("User: " + username);
         logger.verbose("Reason: " + reason);
         logger.verbose("Silent: " + silent);
@@ -46,11 +47,13 @@ public class UnbanCommand implements CommandExecutor {
             reason = plugin.getConfig().getString("punishments.default_reason", "No reason specified");
         }
 
-        String punisherUuid = "CONSOLE";
+        String punisherUuid;
         String punisherName = "CONSOLE";
         if (sender instanceof Player) {
             punisherUuid = ((Player) sender).getUniqueId().toString();
             punisherName = sender.getName();
+        } else {
+            punisherUuid = "CONSOLE";
         }
 
         String alreadyUnbannedMessage = plugin.getConfig().getString("messages.commands.unban.already_unbanned");
@@ -77,13 +80,18 @@ public class UnbanCommand implements CommandExecutor {
             return true;
         }
 
-        Result unbanResult = handler.unBanPlayer(usernameUuid, punisherUuid, reason, null, silent);
-        if (unbanResult.isSuccess()) {
+        String finalReason = reason;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Result unbanResult = handler.unBanPlayer(usernameUuid, punisherUuid, finalReason, null, silent);
+            if (unbanResult.isSuccess()) {
 //            sender.sendMessage(miniMessage.deserialize("<green>Successfully unbanned player."));
-        } else {
-            placeholders.put("error", unbanResult.getMessage());
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(unbanErrorMessage, placeholders)));
-        }
+            } else {
+                placeholders.put("error", unbanResult.getMessage());
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(unbanErrorMessage, placeholders)));
+                });
+            }
+        });
         return true;
     }
 }

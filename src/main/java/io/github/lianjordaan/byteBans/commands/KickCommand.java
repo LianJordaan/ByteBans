@@ -6,6 +6,7 @@ import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
 import io.github.lianjordaan.byteBans.util.BBLogger;
 import io.github.lianjordaan.byteBans.util.CommandUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -55,11 +56,13 @@ public class KickCommand implements CommandExecutor {
         String kickErrorMessage = plugin.getConfig().getString("messages.commands.kick.command_error");
         String invalidUsernameMessage = plugin.getConfig().getString("messages.commands.kick.player_not_found");
 
-        String punisherUuid = "CONSOLE";
+        String punisherUuid;
         String punisherName = "CONSOLE";
         if (sender instanceof Player) {
             punisherUuid = ((Player) sender).getUniqueId().toString();
             punisherName = sender.getName();
+        } else {
+            punisherUuid = "CONSOLE";
         }
 
         Map<String, String> placeholders = new HashMap<>();
@@ -77,13 +80,19 @@ public class KickCommand implements CommandExecutor {
 
         PunishmentsHandler handler = plugin.getPunishmentsHandler();
 
-        boolean kickResult = handler.kickPlayer(usernameUuid, punisherUuid, reason, scope, silent);
-        if (kickResult) {
+        String finalReason = reason;
+        String finalScope = scope;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            boolean kickResult = handler.kickPlayer(usernameUuid, punisherUuid, finalReason, finalScope, silent);
+            if (kickResult) {
 //            sender.sendMessage(miniMessage.deserialize("<green>Successfully kickned player."));
-        } else {
-            placeholders.put("error", "Unknown error");
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(kickErrorMessage, placeholders)));
-        }
+            } else {
+                placeholders.put("error", "Unknown error");
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(kickErrorMessage, placeholders)));
+                });
+            }
+        });
         return true;
     }
 }

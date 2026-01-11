@@ -6,6 +6,7 @@ import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
 import io.github.lianjordaan.byteBans.util.BBLogger;
 import io.github.lianjordaan.byteBans.util.CommandUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -53,11 +54,13 @@ public class TempMuteCommand implements CommandExecutor {
             reason = plugin.getConfig().getString("punishments.default_reason", "No reason specified");
         }
 
-        String punisherUuid = "CONSOLE";
+        String punisherUuid;
         String punisherName = "CONSOLE";
         if (sender instanceof Player) {
             punisherUuid = ((Player) sender).getUniqueId().toString();
             punisherName = sender.getName();
+        } else {
+            punisherUuid = "CONSOLE";
         }
 
         Map<String, String> placeholders = new HashMap<>();
@@ -97,13 +100,19 @@ public class TempMuteCommand implements CommandExecutor {
             return true;
         }
 
-        Result muteResult = handler.tempMutePlayer(usernameUuid, punisherUuid, parsedTime, reason, scope, silent);
-        if (muteResult.isSuccess()) {
+        String finalReason = reason;
+        String finalScope = scope;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Result muteResult = handler.tempMutePlayer(usernameUuid, punisherUuid, parsedTime, finalReason, finalScope, silent);
+            if (muteResult.isSuccess()) {
 //            sender.sendMessage(miniMessage.deserialize("<green>Successfully tempmuted player."));
-        } else {
-            placeholders.put("error", muteResult.getMessage());
-            sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(tempMuteErrorMessage, placeholders)));
-        }
+            } else {
+                placeholders.put("error", muteResult.getMessage());
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(miniMessage.deserialize(CommandUtils.parseMessageWithPlaceholders(tempMuteErrorMessage, placeholders)));
+                });
+            }
+        });
         return true;
     }
 }
