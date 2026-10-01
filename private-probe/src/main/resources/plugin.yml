@@ -1,0 +1,10 @@
+name: ByteBansPrivateProbe
+version: '1.0.0'
+main: io.github.lianjordaan.bytebansprobe.PrivateProbe
+api-version: '1.21'
+depend: [ByteBans]
+description: Private automated ByteBans event probe; never publish this JAR.
+commands:
+  bbprobe:
+    description: Console-only private player-state inspection for protocol tests.
+    usage: /bbprobe position <online-player>

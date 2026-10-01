@@ -65,14 +65,15 @@ class DiscordWebhookNotifierTest {
         CountDownLatch delivered = new CountDownLatch(1);
         receiver.createContext("/test", exchange -> {
             body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            if (attempts.incrementAndGet() == 1) {
+            boolean success = attempts.incrementAndGet() != 1;
+            if (!success) {
                 exchange.getResponseHeaders().set("Retry-After", "0");
                 exchange.sendResponseHeaders(429, -1);
             } else {
                 exchange.sendResponseHeaders(204, -1);
-                delivered.countDown();
             }
             exchange.close();
+            if (success) delivered.countDown();
         });
         receiver.start();
         try (DiscordWebhookNotifier notifier = new DiscordWebhookNotifier(

@@ -1,0 +1,9 @@
+{
+  "name": "bytebans-private-client",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline-mode TCP gameplay client for private ByteBans compatibility checks",
+  "dependencies": {
+    "mineflayer": "4.39.0"
+  }
+}
