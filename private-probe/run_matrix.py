@@ -18,6 +18,10 @@ from dashboard.servers.transport import SSHTransport
 
 INSTANCE = re.compile(r'mw-[a-f0-9]{16}\Z')
 VERSION = re.compile(r'[0-9][0-9.]*\Z')
+REQUIRED_CASES = frozenset({
+    'ip_ban_login_and_operator_bypass', 'ip_ban_scope_exclusion',
+    'ip_mute_chat_and_operator_bypass', 'freeze_movement_and_operator_bypass',
+})
 
 
 def digest(path):
@@ -75,6 +79,18 @@ def startup_diagnostics(logs):
     return {'initialized': enabled, 'fatal_lines': failures[:10]}
 
 
+def probe_diagnostics(probe, target):
+    cases = probe.get('cases') if isinstance(probe, dict) else None
+    return {
+        'minecraft_matches': isinstance(probe, dict) and probe.get('minecraft') == target['version'],
+        'java_matches': isinstance(probe, dict) and str(probe.get('java', '')).split('.')[0] == str(target['java']),
+        'server_mentions_version': isinstance(probe, dict)
+            and target['version'] in probe.get('server', ''),
+        'all_required_cases_pass': isinstance(cases, dict)
+            and all(cases.get(name) is True for name in REQUIRED_CASES),
+    }
+
+
 def run(target, transport, host, profile, artifacts, folder, config, revision):
     record = None
     result = {'target': target, 'source_revision': revision,
@@ -100,7 +116,9 @@ def run(target, transport, host, profile, artifacts, folder, config, revision):
             probe = remote_result(host, record['id'])
             if probe is not None:
                 result['probe'] = probe
-                result['status'] = 'pass' if probe.get('passed') is True else 'fail'
+                result['probe_diagnostics'] = probe_diagnostics(probe, target)
+                result['status'] = ('pass' if probe.get('passed') is True
+                                    and all(result['probe_diagnostics'].values()) else 'fail')
                 break
             time.sleep(5)
         else:
