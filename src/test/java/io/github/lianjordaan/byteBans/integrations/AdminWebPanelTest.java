@@ -1,9 +1,12 @@
 package io.github.lianjordaan.byteBans.integrations;
 
 import io.github.lianjordaan.byteBans.ByteBans;
+import io.github.lianjordaan.byteBans.database.Database;
 import io.github.lianjordaan.byteBans.model.PunishmentData;
 import io.github.lianjordaan.byteBans.model.Result;
 import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
+import io.github.lianjordaan.byteBans.util.BBLogger;
+import io.github.lianjordaan.byteBans.util.DatabaseUtils;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,6 +20,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -101,6 +106,12 @@ class AdminWebPanelTest {
             assertEquals(200, post(client, base + "/action", undo, base, cookie).statusCode());
             verify(handler).deactivateSubject("PLAYER", row.getSubject(), "ban", 42L,
                     "WEB:Mod_1", "Review", "unban");
+            assertEquals(403, post(client, base + "/logout", "csrf=wrong", base, cookie).statusCode());
+            assertEquals(200, post(client, base + "/logout", "csrf=" + csrf, base, cookie).statusCode());
+            String signedOutPage = client.send(HttpRequest.newBuilder(URI.create(base + "/"))
+                    .header("Cookie", cookie).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            assertTrue(signedOutPage.contains("Access token"));
+            assertFalse(signedOutPage.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
         }
     }
 
@@ -121,5 +132,58 @@ class AdminWebPanelTest {
         assertEquals("&lt;&amp;&quot;&#39;&gt;", AdminWebPanel.esc("<&\"'>"));
         assertNull(AdminWebPanel.positiveId("-1"));
         assertEquals(42L, AdminWebPanel.positiveId("42"));
+    }
+
+    @Test
+    void webIpBanAndUndoPersistThroughRealSqliteHandler() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite::memory:")) {
+            DatabaseUtils.migrate(connection, "bytebans_", false);
+            int port;
+            try (ServerSocket socket = new ServerSocket(0)) { port = socket.getLocalPort(); }
+            ByteBans plugin = mock(ByteBans.class);
+            Database database = mock(Database.class);
+            when(plugin.getDatabase()).thenReturn(database);
+            when(database.getConnection()).thenReturn(connection);
+            when(plugin.getDatabaseTablePrefix()).thenReturn("bytebans_");
+            when(plugin.getBBLogger()).thenReturn(mock(BBLogger.class));
+            when(plugin.getServerName()).thenReturn("survival");
+            when(plugin.getDataFolder()).thenReturn(temp.toFile());
+            when(plugin.getLogger()).thenReturn(Logger.getLogger("AdminWebPanelSqliteTest"));
+            when(plugin.isShuttingDown()).thenReturn(true); // no Bukkit server in this HTTP/database integration test
+            YamlConfiguration config = new YamlConfiguration();
+            config.set("admin_web.enabled", true);
+            config.set("admin_web.port", port);
+            when(plugin.getConfig()).thenReturn(config);
+            PunishmentsHandler handler = new PunishmentsHandler(plugin);
+            handler.loadPunishments();
+            when(plugin.getPunishmentsHandler()).thenReturn(handler);
+            try (AdminWebPanel ignored = AdminWebPanel.startIfEnabled(plugin)) {
+                String base = "http://127.0.0.1:" + port;
+                HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
+                String token = Files.readString(temp.resolve("admin-web-token.txt")).trim();
+                HttpResponse<String> signIn = post(client, base + "/login", "actor=Mod_1&token=" + token,
+                        base, null);
+                assertEquals(303, signIn.statusCode());
+                String cookie = signIn.headers().firstValue("Set-Cookie").orElseThrow().split(";", 2)[0];
+                String page = client.send(HttpRequest.newBuilder(URI.create(base + "/"))
+                        .header("Cookie", cookie).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+                Matcher matcher = Pattern.compile("name='csrf' value='([^']+)'").matcher(page);
+                assertTrue(matcher.find());
+                String csrf = matcher.group(1);
+                String ban = "action=ipban&subject=203.0.113.7&scope=*&reason=abuse&csrf=" + csrf;
+                assertEquals(200, post(client, base + "/action", ban, base, cookie).statusCode());
+                PunishmentData active = handler.isIpBanned("203.0.113.7");
+                assertNotNull(active);
+                assertEquals("WEB:Mod_1", active.getPunisherUuid());
+                String undo = "action=ipunban&subject=203.0.113.7&id=" + active.getId()
+                        + "&reason=appeal&csrf=" + csrf;
+                assertEquals(200, post(client, base + "/action", undo, base, cookie).statusCode());
+                assertNull(handler.isIpBanned("203.0.113.7"));
+                PunishmentsHandler reloaded = new PunishmentsHandler(plugin);
+                reloaded.loadPunishments();
+                assertEquals(2, reloaded.history("IP", "203.0.113.7").size());
+                assertEquals("WEB:Mod_1", reloaded.history("IP", "203.0.113.7").getFirst().getPunisherUuid());
+            }
+        }
     }
 }
