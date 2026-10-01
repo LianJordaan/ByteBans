@@ -24,12 +24,12 @@ PAPER_SHA256 = '5ee4f542f628a14c644410b08c94ea42e772ef4d29fe92973636b6813d4eaffc
 
 
 class Client:
-    def __init__(self, port, name):
+    def __init__(self, port, name, version='1.21.4'):
         self.name = name
         self.events = queue.Queue()
         self.all_events = []
         self.stderr_lines = []
-        self.process = subprocess.Popen(['node', str(CLIENT), '127.0.0.1', str(port), '1.21.4', name],
+        self.process = subprocess.Popen(['node', str(CLIENT), '127.0.0.1', str(port), version, name],
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE, text=True, encoding='utf-8',
                                         errors='replace', bufsize=1,
