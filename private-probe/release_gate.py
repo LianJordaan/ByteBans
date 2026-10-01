@@ -347,6 +347,17 @@ class ModrinthClient:
         from dashboard.services.modrinth import get_json
         return get_json(self.ws.API + "/project/" + PROJECT_ID, self.token)
 
+    def get_disclosures(self):
+        import requests
+        response = requests.get(
+            "https://api.modrinth.com/v3/project/" + PROJECT_ID + "/disclosures",
+            headers={"Authorization": self.token, "User-Agent": self.ws.AGENT},
+            timeout=30,
+        )
+        if not response.ok:
+            raise RuntimeError(f"Modrinth ByteBans disclosure read failed (HTTP {response.status_code})")
+        return response.json().get("disclosures", [])
+
     def list_versions(self):
         from dashboard.services.modrinth import get_json
         return get_json(self.ws.API + "/project/" + PROJECT_ID + "/version", self.token)
@@ -465,6 +476,17 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
     project = client.get_project()
     if project.get("id") != PROJECT_ID or project.get("status") != "approved":
         raise ValueError("Modrinth ByteBans project identity or approval changed")
+    page = (HERE / "modrinth-project-body.md").read_text(encoding="utf-8")
+    if project.get("body") != page:
+        raise ValueError("Update and verify the accurate ByteBans project page before upload")
+    disclosures = client.get_disclosures()
+    ai = next((item for item in disclosures if item.get("type") == "ai_content"), None)
+    telemetry = next((item for item in disclosures if item.get("type") == "telemetry"), None)
+    if not ai or not {"code", "text"}.issubset(set(ai.get("uses") or [])):
+        raise ValueError("Modrinth ByteBans AI code/text disclosure is missing")
+    if (not telemetry or telemetry.get("consent") != "opt_in"
+            or not telemetry.get("data_collected")):
+        raise ValueError("Modrinth ByteBans opt-in Discord data disclosure is missing")
     existing = client.list_versions()
     if not isinstance(existing, list) or not any(v.get("id") == PRIOR_VERSION_ID for v in existing):
         raise ValueError("Existing ByteBans 1.0.0 release is missing")

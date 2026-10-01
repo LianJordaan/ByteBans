@@ -32,7 +32,12 @@ class FakeClient:
         self.new = None
 
     def get_project(self):
-        return {"id": gate.PROJECT_ID, "status": "approved"}
+        return {"id": gate.PROJECT_ID, "status": "approved",
+                "body": (gate.HERE / "modrinth-project-body.md").read_text(encoding="utf-8")}
+
+    def get_disclosures(self):
+        return [{"type": "ai_content", "uses": ["code", "text"]},
+                {"type": "telemetry", "consent": "opt_in", "data_collected": ["Discord webhook data"]}]
 
     def list_versions(self):
         return [copy.deepcopy(self.prior)] + ([copy.deepcopy(self.new)] if self.new else [])
@@ -229,6 +234,18 @@ class ReleaseGateTests(unittest.TestCase):
         second = gate.publish(base=self.base, client=client, user_requested_upload=True)
         self.assertEqual(first, second)
         self.assertEqual(1, client.created)
+
+    def test_missing_remote_disclosures_or_outdated_page_never_uploads(self):
+        client = FakeClient(self.jar)
+        client.get_disclosures = lambda: []
+        with self.assertRaisesRegex(ValueError, "AI code/text disclosure"):
+            gate.publish(base=self.base, client=client, user_requested_upload=True)
+        self.assertEqual(0, client.created)
+        client = FakeClient(self.jar)
+        client.get_project = lambda: {"id": gate.PROJECT_ID, "status": "approved", "body": "Old feature list"}
+        with self.assertRaisesRegex(ValueError, "accurate ByteBans project page"):
+            gate.publish(base=self.base, client=client, user_requested_upload=True)
+        self.assertEqual(0, client.created)
 
     def test_conflicting_existing_version_never_uploads(self):
         client = FakeClient(self.jar)
