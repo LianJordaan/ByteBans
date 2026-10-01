@@ -159,6 +159,30 @@ class PunishmentLookupTest {
         }
     }
 
+    @Test
+    void consoleHistoryRemovalHardDeletesTheSelectedRecord() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite::memory:")) {
+            DatabaseUtils.migrate(connection, "bytebans_", false);
+            ByteBans plugin = mock(ByteBans.class);
+            Database database = mock(Database.class);
+            when(plugin.getDatabase()).thenReturn(database);
+            when(database.getConnection()).thenReturn(connection);
+            when(plugin.getDatabaseTablePrefix()).thenReturn("bytebans_");
+            when(plugin.getBBLogger()).thenReturn(mock(BBLogger.class));
+            when(plugin.isShuttingDown()).thenReturn(true);
+            PunishmentsHandler handler = new PunishmentsHandler(plugin);
+            handler.loadPunishments();
+            assertTrue(handler.punishSubject(PLAYER, "PLAYER", PLAYER, "CONSOLE",
+                    "note", "old staff note", "*", 0, true, true));
+            long id = handler.history("PLAYER", PLAYER).getFirst().getId();
+            assertTrue(handler.removePunishment("CONSOLE", id).isSuccess());
+            assertTrue(handler.history("PLAYER", PLAYER).isEmpty());
+            PunishmentsHandler reloaded = new PunishmentsHandler(plugin);
+            reloaded.loadPunishments();
+            assertTrue(reloaded.history("PLAYER", PLAYER).isEmpty());
+        }
+    }
+
     private static void insert(Connection connection, String uuid, String subjectType, String subject,
                                String type, String scope, long start, long duration, boolean active) throws Exception {
         DatabaseUtils.executeUpdate(connection,
