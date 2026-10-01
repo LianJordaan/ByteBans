@@ -53,6 +53,18 @@ def remote_paper_sha(host, instance_id, version, build):
     return result.stdout.split()[0]
 
 
+def remote_artifact_sha(host, instance_id, index, expected_sha):
+    if (not INSTANCE.fullmatch(instance_id) or index not in (0, 1)
+            or not re.fullmatch(r'[a-f0-9]{128}', expected_sha)):
+        raise ValueError('Unexpected private artifact identity')
+    path = (f'/opt/modrinth-workspace/instances/{instance_id}/data/plugins/'
+            f'{index:03}-{expected_sha[:12]}.jar')
+    result = subprocess.run(['ssh', '-o', 'BatchMode=yes', host, 'sha512sum ' + path],
+                            capture_output=True, text=True, encoding='utf-8', errors='replace',
+                            timeout=30, check=True)
+    return result.stdout.split()[0]
+
+
 def startup_diagnostics(logs):
     """Keep a passing event probe from masking a failed ByteBans startup."""
     lines = logs.splitlines()
@@ -97,6 +109,13 @@ def run(target, transport, host, profile, artifacts, folder, config, revision):
                                                          target['paper_build'])
         if result['paper_sha256_actual'] != target['paper_sha256']:
             result['status'] = 'paper_hash_mismatch'
+        result['candidate_sha512_actual'] = remote_artifact_sha(host, record['id'], 0,
+                                                                artifacts[0]['sha512'])
+        result['probe_sha512_actual'] = remote_artifact_sha(host, record['id'], 1,
+                                                            artifacts[1]['sha512'])
+        if (result['candidate_sha512_actual'] != artifacts[0]['sha512']
+                or result['probe_sha512_actual'] != artifacts[1]['sha512']):
+            result['status'] = 'artifact_hash_mismatch'
         result['logs'] = transport.call('logs', id=record['id'])
         result['startup_diagnostics'] = startup_diagnostics(result['logs'])
         if result['status'] == 'pass' and (not result['startup_diagnostics']['initialized']
