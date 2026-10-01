@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0-SNAPSHOT (unreleased)
+## 1.1.0 (beta candidate, unpublished)
 
 - Use SQLite for new installations while preserving the storage choice in existing configuration files.
 - Migrate existing punishment rows in place; add versioned subject and last-known-address storage.

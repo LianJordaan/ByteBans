@@ -1,10 +1,10 @@
 # ByteBans
 
-ByteBans keeps bans, mutes, kicks and other moderation records in SQLite or MySQL. Punishments can apply to one server, several named servers or every server in a shared database. The current development source builds against Paper 1.21 with Java 21. This is an unreleased `1.1.0-SNAPSHOT` candidate; compatibility beyond the tested server versions must be checked before publishing.
+ByteBans keeps bans, mutes, kicks and other moderation records in SQLite or MySQL. Punishments can apply to one server, several named servers or every server in a shared database. The current source builds against Paper 1.21 with Java 21. Version `1.1.0` is a beta release candidate; its tested Paper versions are recorded in [the private probe results](private-probe/RESULTS.md). It has not yet been published on Modrinth.
 
 ## Install
 
-Build with JDK 21 and `mvn package`, then place `target/ByteBans-1.1.0-SNAPSHOT.jar` in the server's `plugins` folder. The bundled configuration uses a local SQLite database by default, so a fresh installation needs no database account. Start once to create `plugins/ByteBans/config.yml`, then set a meaningful `server.name`. Leave the default `punishments.default_scope: "*"` if new punishments should apply everywhere.
+Build with JDK 21 and `mvn package`, then place `target/ByteBans-1.1.0.jar` in the server's `plugins` folder. The bundled configuration uses a local SQLite database by default, so a fresh installation needs no database account. Start once to create `plugins/ByteBans/config.yml`, then set a meaningful `server.name`. Leave the default `punishments.default_scope: "*"` if new punishments should apply everywhere.
 
 For a network, set `storage.type: mysql` and supply the same database credentials and `storage.table_prefix` on each server. Each server needs a different `server.name`. Existing configuration files keep their chosen storage type; upgrading does not switch an existing MySQL installation to SQLite. Back up the database before upgrading. The startup migration adds subject fields and a last-known-address table without deleting or renumbering old punishments. MySQL connections use five-second connect and socket timeouts.
 
