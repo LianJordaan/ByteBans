@@ -52,7 +52,8 @@ public class RemovePunishmentCommand implements CommandExecutor {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             Result result = plugin.getPunishmentsHandler().removePunishment(uuid, finalIdNum);
             if (result.isSuccess()) {
-                sender.sendMessage(miniMessage.deserialize("<green>Successfully removed punishment."));
+                Bukkit.getScheduler().runTask(plugin, () ->
+                        sender.sendMessage(miniMessage.deserialize("<green>Successfully removed punishment.")));
             } else {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     sender.sendMessage(miniMessage.deserialize("<red>Failed to remove punishment. Error: <u>" + result.getMessage() + "</u>"));

@@ -43,6 +43,7 @@ public class PunishmentUpdater {
         return new BukkitRunnable() {
             @Override
             public void run() {
+                if (plugin.isShuttingDown()) return;
                 try {
                     String prefix = plugin.getDatabaseTablePrefix();
                     plugin.getPunishmentsHandler().markExpiredPunishmentsInactive();
@@ -71,6 +72,7 @@ public class PunishmentUpdater {
         return new BukkitRunnable() {
             @Override
             public void run() {
+                if (plugin.isShuttingDown()) return;
                 try {
                     String prefix = plugin.getDatabaseTablePrefix();
 
@@ -87,14 +89,16 @@ public class PunishmentUpdater {
 
     public BukkitTask startUpdatePurge() {
         long interval = plugin.getConfig().getLong("sync.update_retention", 10) * 20 * 60;
+        long retentionMinutes = plugin.getConfig().getLong("sync.update_retention", 10);
         return new BukkitRunnable() {
             @Override
             public void run() {
+                if (plugin.isShuttingDown()) return;
                 try {
                     String prefix = plugin.getDatabaseTablePrefix();
 
                     logger.verbose("Purging old punishment updates...");
-                    DatabaseUtils.purgeOldUpdates(connection, prefix, plugin.getConfig().getLong("sync.update_retention", 10));
+                    DatabaseUtils.purgeOldUpdates(connection, prefix, retentionMinutes);
                     logger.verbose("Old punishment updates purged.");
                 } catch (SQLException e) {
                     logger.error("Failed to purge old punishment updates!", e);

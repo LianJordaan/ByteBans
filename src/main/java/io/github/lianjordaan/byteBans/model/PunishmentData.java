@@ -1,18 +1,20 @@
 package io.github.lianjordaan.byteBans.model;
 
 public class PunishmentData {
-    public long id;
-    public String uuid;
-    public String punisherUuid;
-    public String type;
-    public String reason;
-    public String scope;
-    public long startTime;
-    public long duration;
-    public boolean active;
-    public long createdAt;
-    public long updatedAt;
-    public boolean silent;
+    private long id;
+    private String uuid;
+    private String punisherUuid;
+    private String type;
+    private String reason;
+    private String scope;
+    private String subjectType = "PLAYER";
+    private String subject;
+    private long startTime;
+    private long duration;
+    private boolean active;
+    private long createdAt;
+    private long updatedAt;
+    private boolean silent;
 
     public long getId() {
         return id;
@@ -36,6 +38,14 @@ public class PunishmentData {
 
     public String getScope() {
         return scope;
+    }
+
+    public String getSubjectType() {
+        return subjectType;
+    }
+
+    public String getSubject() {
+        return subject == null || subject.isEmpty() ? uuid : subject;
     }
 
     public long getStartTime() {
@@ -86,6 +96,14 @@ public class PunishmentData {
         this.scope = scope;
     }
 
+    public void setSubjectType(String subjectType) {
+        this.subjectType = subjectType;
+    }
+
+    public void setSubject(String subject) {
+        this.subject = subject;
+    }
+
     public void setStartTime(long startTime) {
         this.startTime = startTime;
     }
@@ -119,6 +137,8 @@ public class PunishmentData {
                 ", type='" + type + '\'' +
                 ", reason='" + reason + '\'' +
                 ", scope='" + scope + '\'' +
+                ", subjectType='" + subjectType + '\'' +
+                ", subject='" + subject + '\'' +
                 ", startTime=" + startTime +
                 ", duration=" + duration +
                 ", active=" + active +
@@ -136,6 +156,8 @@ public class PunishmentData {
         copy.setType(this.type);
         copy.setReason(this.reason);
         copy.setScope(this.scope);
+        copy.setSubjectType(this.subjectType);
+        copy.setSubject(this.subject);
         copy.setStartTime(this.startTime);
         copy.setDuration(this.duration);
         copy.setActive(this.active);

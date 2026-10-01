@@ -7,6 +7,7 @@ import io.github.lianjordaan.byteBans.util.BBLogger;
 import io.github.lianjordaan.byteBans.util.CommandUtils;
 import io.github.lianjordaan.byteBans.util.DatabaseUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerKickEvent;
@@ -20,11 +21,12 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class PunishmentsHandler {
-    private static ByteBans plugin;
-    private Connection connection;
-    private Map<Long, PunishmentData> punishments = new HashMap<>();
-    private static BBLogger logger;
-    private MiniMessage miniMessage = MiniMessage.miniMessage();
+    private final ByteBans plugin;
+    private final Connection connection;
+    // Pollers write a new snapshot; login, chat and commands read it on other threads.
+    private volatile Map<Long, PunishmentData> punishments = Map.of();
+    private final BBLogger logger;
+    private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
     public PunishmentsHandler(ByteBans plugin) throws SQLException {
         this.plugin = plugin;
@@ -32,7 +34,7 @@ public class PunishmentsHandler {
         this.logger = plugin.getBBLogger();
     }
 
-    public void reloadPunishments() throws SQLException {
+    public synchronized void reloadPunishments() throws SQLException {
         Map<Long, PunishmentData> oldPunishments = this.punishments;
         Map<Long, PunishmentData> newPunishments = new HashMap<>();
         List<PunishmentData> punishmentsList = DatabaseUtils.getPunishments(connection, plugin.getDatabaseTablePrefix());
@@ -54,24 +56,25 @@ public class PunishmentsHandler {
         }
 
         // Replace old map with new
-        this.punishments = newPunishments;
+        this.punishments = Map.copyOf(newPunishments);
     }
 
 
-    public void loadPunishments() throws SQLException {
-        punishments.clear();
-
+    public synchronized void loadPunishments() throws SQLException {
+        Map<Long, PunishmentData> loaded = new HashMap<>();
         List<PunishmentData> punishmentsList = DatabaseUtils.getPunishments(connection, plugin.getDatabaseTablePrefix());
         logger.verbose("Loading " + punishmentsList.size() + " punishments into memory...");
         for (PunishmentData punishment : punishmentsList) {
-            punishments.put(punishment.getId(), punishment);
+            loaded.put(punishment.getId(), punishment);
             logger.verbose("Loaded punishment with ID " + punishment.getId() + " into memory.");
             logger.verbose("Punishment data: " + punishment.toString());
         }
+        punishments = Map.copyOf(loaded);
     }
 
     public PunishmentData getPunishment(long id) {
-        return punishments.get(id);
+        PunishmentData value = punishments.get(id);
+        return value == null ? null : value.copy();
     }
 
     public Map<Long, PunishmentData> getActivePunishments() {
@@ -80,7 +83,7 @@ public class PunishmentsHandler {
         for (Map.Entry<Long, PunishmentData> entry : punishments.entrySet()) {
             PunishmentData punishment = entry.getValue();
             if (punishment.isActive()) {
-                activePunishments.put(entry.getKey(), punishment);
+                activePunishments.put(entry.getKey(), punishment.copy());
             }
         }
         return activePunishments;
@@ -91,7 +94,8 @@ public class PunishmentsHandler {
 
         for (Map.Entry<Long, PunishmentData> entry : getActivePunishments().entrySet()) {
             PunishmentData punishment = entry.getValue();
-            if (punishment.getUuid().equalsIgnoreCase(uuid)) {
+            if ("PLAYER".equalsIgnoreCase(punishment.getSubjectType())
+                    && punishment.getSubject().equalsIgnoreCase(uuid)) {
                 activePunishments.put(entry.getKey(), punishment);
             }
         }
@@ -135,9 +139,9 @@ public class PunishmentsHandler {
 
     public PunishmentData isPlayerMuted(String uuid) {
         for (Map.Entry<Long, PunishmentData> entry : getActivePunishments(uuid).entrySet()) {
-            Long id = entry.getKey();
             PunishmentData punishment = entry.getValue();
-            if (punishment.getType().equalsIgnoreCase("mute")) {
+            if (punishment.getType().equalsIgnoreCase("mute")
+                    && matchesScope(punishment.getScope(), plugin.getServerName())) {
                 long endTime = getPunishmentEndTime(punishment);
                 boolean isPermanent = isPunishmentPermanent(punishment);
                 if (isPermanent || endTime > System.currentTimeMillis()) {
@@ -150,9 +154,9 @@ public class PunishmentsHandler {
 
     public PunishmentData isPlayerBanned(String uuid) {
         for (Map.Entry<Long, PunishmentData> entry : getActivePunishments(uuid).entrySet()) {
-            Long id = entry.getKey();
             PunishmentData punishment = entry.getValue();
-            if (punishment.getType().equalsIgnoreCase("ban")) {
+            if (punishment.getType().equalsIgnoreCase("ban")
+                    && matchesScope(punishment.getScope(), plugin.getServerName())) {
                 long endTime = getPunishmentEndTime(punishment);
                 boolean isPermanent = isPunishmentPermanent(punishment);
                 if (isPermanent || endTime > System.currentTimeMillis()) {
@@ -161,6 +165,96 @@ public class PunishmentsHandler {
             }
         }
         return null;
+    }
+
+    public PunishmentData findActiveSubject(String subjectType, String subject, String type) {
+        String serverName = plugin.getServerName();
+        long now = System.currentTimeMillis();
+        return punishments.values().stream()
+                .filter(p -> p.isActive() && p.getSubjectType().equalsIgnoreCase(subjectType)
+                        && p.getSubject().equalsIgnoreCase(subject)
+                        && p.getType().equalsIgnoreCase(type)
+                        && (p.getDuration() == 0 || p.getStartTime() + p.getDuration() > now)
+                        && matchesScope(p.getScope(), serverName))
+                .max(Comparator.comparingLong(PunishmentData::getId)).map(PunishmentData::copy).orElse(null);
+    }
+
+    public PunishmentData findActiveSubjectInScope(String subjectType, String subject, String type, String scope) {
+        long now = System.currentTimeMillis();
+        return punishments.values().stream()
+                .filter(p -> p.isActive() && p.getSubjectType().equalsIgnoreCase(subjectType)
+                        && p.getSubject().equalsIgnoreCase(subject)
+                        && p.getType().equalsIgnoreCase(type)
+                        && p.getScope().equalsIgnoreCase(scope)
+                        && (p.getDuration() == 0 || p.getStartTime() + p.getDuration() > now))
+                .max(Comparator.comparingLong(PunishmentData::getId)).map(PunishmentData::copy).orElse(null);
+    }
+
+    public PunishmentData isIpBanned(String address) {
+        return findActiveSubject("IP", address, "ipban");
+    }
+
+    public PunishmentData isIpMuted(String address) {
+        return findActiveSubject("IP", address, "ipmute");
+    }
+
+    public PunishmentData isPlayerFrozen(String uuid) {
+        return findActiveSubject("PLAYER", uuid, "freeze");
+    }
+
+    public List<PunishmentData> history(String subjectType, String subject) {
+        return punishments.values().stream()
+                .filter(p -> p.getSubjectType().equalsIgnoreCase(subjectType)
+                        && p.getSubject().equalsIgnoreCase(subject))
+                .sorted(Comparator.comparingLong(PunishmentData::getId).reversed())
+                .map(PunishmentData::copy)
+                .toList();
+    }
+
+    public void rememberPlayerAddress(String uuid, String address) throws SQLException {
+        DatabaseUtils.savePlayerAddress(connection, plugin.getDatabaseTablePrefix(), plugin.isUsingMysql(), uuid, address);
+    }
+
+    public String lastPlayerAddress(String uuid) throws SQLException {
+        return DatabaseUtils.getPlayerAddress(connection, plugin.getDatabaseTablePrefix(), uuid);
+    }
+
+    public synchronized Result deactivateSubject(String subjectType, String subject, String type,
+                                                  Long id, String punisherUuid, String reason, String auditType) {
+        PunishmentData target;
+        if (id == null) {
+            List<PunishmentData> matches = history(subjectType, subject).stream()
+                    .filter(p -> p.isActive() && p.getType().equalsIgnoreCase(type)
+                            && (p.getDuration() == 0
+                                || p.getStartTime() + p.getDuration() > System.currentTimeMillis()))
+                    .toList();
+            if (matches.size() > 1) {
+                return new Result(false, "Multiple active " + type + " records exist; use id:<number> from /history.");
+            }
+            target = matches.isEmpty() ? null : matches.getFirst();
+        } else {
+            target = punishments.get(id);
+        }
+        if (target == null || !target.isActive() || !target.getType().equalsIgnoreCase(type)
+                || !target.getSubjectType().equalsIgnoreCase(subjectType)
+                || (subject != null && !target.getSubject().equalsIgnoreCase(subject))) {
+            return new Result(false, "No active " + type + " found for that target.");
+        }
+        try {
+            DatabaseUtils.executeUpdate(connection, "UPDATE " + plugin.getDatabaseTablePrefix()
+                    + "punishments SET active = ?, updated_at = ? WHERE id = ?",
+                    false, System.currentTimeMillis(), target.getId());
+            sendPunishmentUpdate(target.getId(), auditType, System.currentTimeMillis(), punisherUuid);
+            if (!punishSubject(target.getUuid(), subjectType, target.getSubject(), punisherUuid,
+                    auditType, reason, target.getScope(), 0, false, true)) {
+                logger.error("Punishment was deactivated, but its audit record could not be saved");
+            }
+            reloadPunishments();
+            return new Result(true, "Removed " + type + " #" + target.getId() + ".");
+        } catch (SQLException e) {
+            logger.error("Failed to deactivate " + type + " #" + target.getId(), e);
+            return new Result(false, "Database error while removing " + type + ".");
+        }
     }
 
     public Result unmutePlayer(String uuid, String punisherUuid, String reason, Long id, boolean silent) {
@@ -174,12 +268,11 @@ public class PunishmentsHandler {
             }
         }
         logger.verbose("Unmute ID: " + id);
-        logger.verbose("<yellow>Pinishment to unmute: " + punishments.get(id).toString() + "</yellow>");
+        if (id != null) {
+            logger.verbose("<yellow>Punishment to unmute: " + punishments.get(id) + "</yellow>");
+        }
         if (id != null) {
             PunishmentData punishment = punishments.get(id);
-            punishment.setActive(false);
-            punishment.setUpdatedAt(System.currentTimeMillis());
-
             punishPlayer(uuid, punisherUuid, "unmute", reason, "*", 0, false, silent);
             boolean success = makePunishmentInactiveInDatabase(id);
             if (success) {
@@ -203,9 +296,6 @@ public class PunishmentsHandler {
         }
         if (id != null) {
             PunishmentData punishment = punishments.get(id);
-            punishment.setActive(false);
-            punishment.setUpdatedAt(System.currentTimeMillis());
-
             punishPlayer(uuid, punisherUuid, "unban", reason, "*", 0, false, silent);
             boolean success = makePunishmentInactiveInDatabase(id);
             if (success) {
@@ -229,9 +319,6 @@ public class PunishmentsHandler {
         }
         if (id != null) {
             PunishmentData punishment = punishments.get(id);
-            punishment.setActive(false);
-            punishment.setUpdatedAt(System.currentTimeMillis());
-
             punishPlayer(uuid, punisherUuid, "unwarn", reason, scope, 0, false, true);
             boolean success = makePunishmentInactiveInDatabase(id);
             if (success) {
@@ -255,9 +342,6 @@ public class PunishmentsHandler {
         }
         if (id != null) {
             PunishmentData punishment = punishments.get(id);
-            punishment.setActive(false);
-            punishment.setUpdatedAt(System.currentTimeMillis());
-
             punishPlayer(uuid, punisherUuid, "unnote", reason, scope, 0, false, true);
             boolean success = makePunishmentInactiveInDatabase(id);
             if (success) {
@@ -273,10 +357,14 @@ public class PunishmentsHandler {
         if (punishments.get(id) == null) {
             return new Result(false, "No punishment found with that ID.");
         }
-        punishments.remove(id);
         logger.info("Punishment ID: " + id + " has been removed by " + adminUuid);
         boolean result = removePunishmentInDatabase(id);
         if (result) {
+            try {
+                reloadPunishments();
+            } catch (SQLException e) {
+                logger.error("Failed to refresh punishments after removal", e);
+            }
             return new Result(true, "Successfully removed punishment.");
         }
         return new Result(false, "Failed to remove punishment. Please check console for more details.");
@@ -347,8 +435,15 @@ public class PunishmentsHandler {
     }
 
     public boolean punishPlayer(String uuid, String punisherUuid, String type, String reason, String scope, long duration, boolean active, boolean silent) {
+        return punishSubject(uuid, "PLAYER", uuid, punisherUuid, type, reason, scope, duration, active, silent);
+    }
+
+    public synchronized boolean punishSubject(String uuid, String subjectType, String subject, String punisherUuid,
+                                 String type, String reason, String scope, long duration, boolean active, boolean silent) {
         PunishmentData punishment = new PunishmentData();
         punishment.setUuid(uuid);
+        punishment.setSubjectType(subjectType);
+        punishment.setSubject(subject);
         punishment.setPunisherUuid(punisherUuid);
         punishment.setType(type);
         punishment.setReason(reason);
@@ -360,11 +455,15 @@ public class PunishmentsHandler {
         punishment.setUpdatedAt(System.currentTimeMillis());
         punishment.setSilent(silent);
 
-        String sql = "INSERT INTO " + plugin.getDatabaseTablePrefix() + "punishments (uuid, punisher_uuid, type, reason, scope, start_time, duration, active, created_at, updated_at, silent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO " + plugin.getDatabaseTablePrefix()
+                + "punishments (uuid, subject_type, subject, punisher_uuid, type, reason, scope, start_time, duration, active, created_at, updated_at, silent)"
+                + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try {
             long generatedId = DatabaseUtils.executeInsert(connection, sql,
                     punishment.getUuid(),
+                    punishment.getSubjectType(),
+                    punishment.getSubject(),
                     punishment.getPunisherUuid(),
                     punishment.getType(),
                     punishment.getReason(),
@@ -380,6 +479,12 @@ public class PunishmentsHandler {
             punishment.setId(generatedId);
 
             sendPunishmentUpdate(generatedId, type, System.currentTimeMillis(), punisherUuid);
+
+            try {
+                reloadPunishments();
+            } catch (SQLException e) {
+                logger.error("Punishment was saved, but the local cache could not be refreshed", e);
+            }
 
             return true;
 
@@ -400,7 +505,11 @@ public class PunishmentsHandler {
 
     public boolean makePunishmentInactiveInDatabase(long id) {
         try {
-            DatabaseUtils.executeUpdate(connection, "UPDATE " + plugin.getDatabaseTablePrefix() + "punishments SET active = ? WHERE id = ?", false, id);
+            DatabaseUtils.executeUpdate(connection, "UPDATE " + plugin.getDatabaseTablePrefix()
+                    + "punishments SET active = ?, updated_at = ? WHERE id = ?",
+                    false, System.currentTimeMillis(), id);
+            sendPunishmentUpdate(id, "deactivate", System.currentTimeMillis(), "SYSTEM");
+            reloadPunishments();
         } catch (Exception e) {
             e.printStackTrace();
             logger.error("Failed to make punishment inactive in database!", e);
@@ -412,6 +521,7 @@ public class PunishmentsHandler {
     public boolean removePunishmentInDatabase(long id) {
         try {
             DatabaseUtils.executeUpdate(connection, "DELETE FROM " + plugin.getDatabaseTablePrefix() + "punishments WHERE id = ?", id);
+            sendPunishmentUpdate(id, "remove", System.currentTimeMillis(), "SYSTEM");
         } catch (Exception e) {
             e.printStackTrace();
             logger.error("Failed to remove punishment from database!", e);
@@ -421,7 +531,9 @@ public class PunishmentsHandler {
     }
 
     public Map<Long, PunishmentData> getPunishments() {
-        return punishments;
+        Map<Long, PunishmentData> copy = new HashMap<>();
+        punishments.forEach((id, value) -> copy.put(id, value.copy()));
+        return Map.copyOf(copy);
     }
 
     public List<Long> getPunishmentIds() {
@@ -429,6 +541,23 @@ public class PunishmentsHandler {
     }
 
     public void announcePunishment(PunishmentData punishment) {
+        if (plugin.isShuttingDown()) return;
+        if (!Bukkit.isPrimaryThread()) {
+            Bukkit.getScheduler().runTask(plugin, () -> announcePunishment(punishment));
+            return;
+        }
+        if ("ipban".equalsIgnoreCase(punishment.getType()) && punishment.isActive()
+                && (punishment.getDuration() == 0
+                    || punishment.getStartTime() + punishment.getDuration() > System.currentTimeMillis())
+                && matchesScope(punishment.getScope(), plugin.getServerName())) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (punishment.getSubject().equals(plugin.getOnlineAddress(player.getUniqueId().toString()))
+                        && !hasPunishmentBypass(player)) {
+                    player.kick(Component.text("Your IP address is banned: " + punishment.getReason()));
+                }
+            }
+            return;
+        }
         String punisher = punishment.getPunisherUuid();
         String punisherName = "UNKNOWN";
         if (punisher.equalsIgnoreCase("CONSOLE")) {
@@ -597,7 +726,14 @@ public class PunishmentsHandler {
      * Supports wildcards: *, prefix*, *suffix, *contains*
      */
     public boolean matchesScope(String scope, String serverName) {
-        scope = scope.toLowerCase();
+        if (scope == null || serverName == null) return false;
+        if (scope.contains(",")) {
+            for (String part : scope.split(",")) {
+                if (matchesScope(part.trim(), serverName)) return true;
+            }
+            return false;
+        }
+        scope = scope.trim().toLowerCase();
         serverName = serverName.toLowerCase();
 
         if (scope.equals("*")) return true; // matches all
@@ -619,7 +755,7 @@ public class PunishmentsHandler {
         }
     }
 
-    public static boolean hasPunishmentBypass(Player player) {
+    public boolean hasPunishmentBypass(Player player) {
         boolean operatorBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.allow_operator") && player.isOp();
         boolean permissionBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.allow_permission") && player.hasPermission("bytebans.bypass");
         return operatorBypass || permissionBypass;
@@ -631,11 +767,11 @@ public class PunishmentsHandler {
             // and where start_time + duration <= current time (i.e., they are expired)
             String query = "UPDATE " + plugin.getDatabaseTablePrefix() + "punishments " +
                     "SET active = ? " +
-                    "WHERE duration > 0 AND (start_time + duration) <= ?";
+                    "WHERE active = ? AND duration > 0 AND (start_time + duration) <= ?";
 
             long now = System.currentTimeMillis();
 
-            DatabaseUtils.executeUpdate(connection, query, false, now);
+            DatabaseUtils.executeUpdate(connection, query, false, true, now);
 
             return true;
         } catch (Exception e) {
@@ -690,7 +826,7 @@ public class PunishmentsHandler {
             return;
         }
 
-        boolean adminBypass = PunishmentsHandler.hasPunishmentBypass(player);
+        boolean adminBypass = hasPunishmentBypass(player);
         boolean notifyAdminBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.notify");
         if (adminBypass) {
             if (notifyAdminBypass) {
@@ -736,7 +872,7 @@ public class PunishmentsHandler {
         placeholders.put("scope", punishment.getScope());
         placeholders.put("punishment_id", String.valueOf(punishment.getId()));
 
-        boolean adminBypass = PunishmentsHandler.hasPunishmentBypass(player);
+        boolean adminBypass = hasPunishmentBypass(player);
         boolean notifyAdminBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.notify");
         if (adminBypass) {
             if (notifyAdminBypass) {

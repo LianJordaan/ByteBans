@@ -6,6 +6,7 @@ import io.github.lianjordaan.byteBans.model.Result;
 import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
 import io.github.lianjordaan.byteBans.util.BBLogger;
 import io.github.lianjordaan.byteBans.util.CommandUtils;
+import io.github.lianjordaan.byteBans.util.IpAddresses;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -14,9 +15,11 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerLoginEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.sql.SQLException;
 
 public class LoginListener implements Listener {
     private ByteBans plugin;
@@ -36,8 +39,11 @@ public class LoginListener implements Listener {
         Player player = event.getPlayer();
         String uuid = player.getUniqueId().toString();
         PunishmentData bannedPunishment = handler.isPlayerBanned(uuid);
+        if (bannedPunishment == null && event.getAddress() != null) {
+            bannedPunishment = handler.isIpBanned(IpAddresses.canonical(event.getAddress().getHostAddress()));
+        }
 
-        String serverName = plugin.getConfig().getString("server.name", "*");
+        String serverName = plugin.getServerName();
 
         if (bannedPunishment != null) {
             String scope = bannedPunishment.getScope();
@@ -82,7 +88,7 @@ public class LoginListener implements Listener {
             placeholders.put("punishment_id", String.valueOf(bannedPunishment.getId()));
             logger.verbose("<gold>Banned punishment: " + bannedPunishment.toString());
 
-            boolean adminBypass = PunishmentsHandler.hasPunishmentBypass(player);
+            boolean adminBypass = handler.hasPunishmentBypass(player);
             boolean notifyAdminBypass = plugin.getConfig().getBoolean("punishments.staff_bypass.notify");
             if (adminBypass) {
                 logger.verbose("<red>" + player.getName() + " is banned but has permission to bypass this punishment.</red>");
@@ -107,5 +113,26 @@ public class LoginListener implements Listener {
                 return;
             }
         }
+    }
+
+    @EventHandler
+    public void rememberAddress(PlayerJoinEvent event) {
+        if (plugin.isShuttingDown() || event.getPlayer().getAddress() == null
+                || event.getPlayer().getAddress().getAddress() == null) return;
+        String uuid = event.getPlayer().getUniqueId().toString();
+        String address = IpAddresses.canonical(event.getPlayer().getAddress().getAddress().getHostAddress());
+        plugin.setOnlineAddress(uuid, address);
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                handler.rememberPlayerAddress(uuid, address);
+            } catch (SQLException error) {
+                logger.error("Failed to remember player address", error);
+            }
+        });
+    }
+
+    @EventHandler
+    public void forgetAddress(PlayerQuitEvent event) {
+        plugin.clearOnlineAddress(event.getPlayer().getUniqueId().toString());
     }
 }

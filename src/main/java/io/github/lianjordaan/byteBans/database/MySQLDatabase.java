@@ -25,7 +25,8 @@ public class MySQLDatabase implements Database {
             throw new SQLException("MySQL JDBC driver not found", e);
         }
 
-        String url = "jdbc:mysql://" + host + ":" + port + "/" + database + "?useSSL=false&serverTimezone=UTC";
+        String url = "jdbc:mysql://" + host + ":" + port + "/" + database
+                + "?useSSL=false&serverTimezone=UTC&connectTimeout=5000&socketTimeout=5000&tcpKeepAlive=true";
         connection = DriverManager.getConnection(url, username, password);
     }
 

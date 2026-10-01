@@ -11,9 +11,59 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class DatabaseUtils {
+    public static final int SCHEMA_VERSION = 2;
+
+    private static void validatePrefix(String prefix) {
+        if (prefix == null || !prefix.matches("[A-Za-z][A-Za-z0-9_]{0,30}")) {
+            throw new IllegalArgumentException("Invalid database table prefix");
+        }
+    }
+
+    /** Idempotently extend the original schema without replacing its rows or IDs. */
+    public static synchronized void migrate(Connection connection, String prefix, boolean isMySQL) throws SQLException {
+        validatePrefix(prefix);
+        createTables(connection, prefix, isMySQL);
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS " + prefix
+                    + "schema_version (version INTEGER NOT NULL)");
+        }
+        int version;
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("SELECT MAX(version) FROM " + prefix + "schema_version")) {
+            version = result.next() ? result.getInt(1) : 0;
+        }
+        if (version > SCHEMA_VERSION) {
+            throw new SQLException("ByteBans database schema " + version + " is newer than this plugin");
+        }
+        String table = prefix + "punishments";
+        try (Statement statement = connection.createStatement()) {
+            if (!columnExists(connection, table, "subject_type")) {
+                statement.executeUpdate("ALTER TABLE " + table
+                        + " ADD COLUMN subject_type VARCHAR(16) NOT NULL DEFAULT 'PLAYER'");
+            }
+            if (!columnExists(connection, table, "subject")) {
+                statement.executeUpdate("ALTER TABLE " + table
+                        + " ADD COLUMN subject VARCHAR(45) NOT NULL DEFAULT ''");
+            }
+            statement.executeUpdate("UPDATE " + table + " SET subject = uuid WHERE subject = '' AND subject_type = 'PLAYER'");
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS " + prefix + "player_addresses ("
+                    + "uuid CHAR(36) PRIMARY KEY, address VARCHAR(45) NOT NULL, updated_at BIGINT NOT NULL)");
+            if (version == 0) {
+                statement.executeUpdate("INSERT INTO " + prefix + "schema_version (version) VALUES (" + SCHEMA_VERSION + ")");
+            } else {
+                statement.executeUpdate("UPDATE " + prefix + "schema_version SET version = " + SCHEMA_VERSION);
+            }
+        }
+    }
+
+    private static boolean columnExists(Connection connection, String table, String column) throws SQLException {
+        try (ResultSet columns = connection.getMetaData().getColumns(null, null, table, column)) {
+            return columns.next();
+        }
+    }
 
     // Create tables (same as before)
-    public static boolean createTables(Connection connection, String prefix, boolean isMySQL) throws SQLException {
+    public static synchronized boolean createTables(Connection connection, String prefix, boolean isMySQL) throws SQLException {
         String autoIncrement = isMySQL ? "AUTO_INCREMENT" : "AUTOINCREMENT";
         String integerType = isMySQL ? "BIGINT" : "INTEGER";
 
@@ -58,7 +108,7 @@ public class DatabaseUtils {
     }
 
     // Generic update (INSERT, UPDATE, DELETE)
-    public static void executeUpdate(Connection connection, String sql, Object... params) throws SQLException {
+    public static synchronized void executeUpdate(Connection connection, String sql, Object... params) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             for (int i = 0; i < params.length; i++) {
                 ps.setObject(i + 1, params[i]);
@@ -67,17 +117,8 @@ public class DatabaseUtils {
         }
     }
 
-    // Generic query (SELECT)
-    public static ResultSet executeQuery(Connection connection, String sql, Object... params) throws SQLException {
-        PreparedStatement ps = connection.prepareStatement(sql);
-        for (int i = 0; i < params.length; i++) {
-            ps.setObject(i + 1, params[i]);
-        }
-        return ps.executeQuery(); // caller must close ResultSet & PreparedStatement
-    }
-
     // Execute insert and return generated ID
-    public static long executeInsert(Connection connection, String sql, Object... params) throws SQLException {
+    public static synchronized long executeInsert(Connection connection, String sql, Object... params) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             for (int i = 0; i < params.length; i++) {
                 ps.setObject(i + 1, params[i]);
@@ -103,7 +144,7 @@ public class DatabaseUtils {
      * @return true if the table exists, false otherwise
      * @throws SQLException if a database error occurs
      */
-    public static boolean tableExists(Connection connection, String tableName) throws SQLException {
+    public static synchronized boolean tableExists(Connection connection, String tableName) throws SQLException {
         try (ResultSet rs = connection.getMetaData().getTables(null, null, tableName, null)) {
             return rs.next();
         }
@@ -117,14 +158,14 @@ public class DatabaseUtils {
      * @return true if all tables exist, false if any is missing
      * @throws SQLException if a database error occurs
      */
-    public static boolean tablesExist(Connection connection, String... tables) throws SQLException {
+    public static synchronized boolean tablesExist(Connection connection, String... tables) throws SQLException {
         for (String table : tables) {
             if (!tableExists(connection, table)) return false;
         }
         return true;
     }
 
-    public static List<PunishmentData> getPunishments(Connection connection, String prefix) throws SQLException {
+    public static synchronized List<PunishmentData> getPunishments(Connection connection, String prefix) throws SQLException {
         List<PunishmentData> punishments = new ArrayList<>();
 
         String sql = """
@@ -135,6 +176,8 @@ public class DatabaseUtils {
                 type,
                 reason,
                 scope,
+                subject_type,
+                subject,
                 start_time,
                 duration,
                 active,
@@ -156,6 +199,8 @@ public class DatabaseUtils {
                 data.setType(rs.getString("type"));
                 data.setReason(rs.getString("reason"));
                 data.setScope(rs.getString("scope"));
+                data.setSubjectType(rs.getString("subject_type"));
+                data.setSubject(rs.getString("subject"));
                 data.setStartTime(rs.getLong("start_time"));
                 data.setDuration(rs.getLong("duration"));
                 data.setActive(rs.getBoolean("active"));
@@ -170,7 +215,7 @@ public class DatabaseUtils {
         return punishments;
     }
 
-    public static long getLastProcessedUpdateId(Connection connection, String prefix) throws SQLException {
+    public static synchronized long getLastProcessedUpdateId(Connection connection, String prefix) throws SQLException {
         String sql = "SELECT id FROM " + prefix + "punishment_updates ORDER BY id DESC LIMIT 1";
 
         try (Statement stmt = connection.createStatement();
@@ -179,19 +224,22 @@ public class DatabaseUtils {
         }
     }
 
-    public static long getLastUpdateId(Connection connection, String prefix, long lastProcessedUpdateId) throws SQLException {
+    public static synchronized long getLastUpdateId(Connection connection, String prefix, long lastProcessedUpdateId) throws SQLException {
         String sql = "SELECT MAX(id) AS last_id FROM " + prefix + "punishment_updates WHERE id > ?";
 
-        try (ResultSet rs = DatabaseUtils.executeQuery(connection, sql, lastProcessedUpdateId)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, lastProcessedUpdateId);
+            try (ResultSet rs = statement.executeQuery()) {
             if (rs.next()) {
                 long lastId = rs.getLong("last_id");
                 return rs.wasNull() ? 0 : lastId; // If no new updates, MAX returns null
             }
             return 0;
+            }
         }
     }
 
-    public static void purgeOldUpdates(Connection connection, String prefix, long retentionMinutes) throws SQLException {
+    public static synchronized void purgeOldUpdates(Connection connection, String prefix, long retentionMinutes) throws SQLException {
         String sql = "DELETE FROM " + prefix + "punishment_updates WHERE timestamp < ?";
 
         long cutoff = System.currentTimeMillis() - (retentionMinutes * 60 * 1000); // Convert minutes to ms
@@ -204,7 +252,7 @@ public class DatabaseUtils {
      * If the server already exists, updates last_seen.
      * Otherwise, inserts a new row.
      */
-    public static void updateServerHeartbeat(Connection conn, String prefix, String serverName) throws SQLException {
+    public static synchronized void updateServerHeartbeat(Connection conn, String prefix, String serverName) throws SQLException {
         long now = System.currentTimeMillis();
 
         // Check if the server already exists
@@ -237,7 +285,7 @@ public class DatabaseUtils {
     }
 
 
-    public static List<String> getServerHeartbeats(Connection conn, String prefix, long heartbeatTimeout) throws SQLException {
+    public static synchronized List<String> getServerHeartbeats(Connection conn, String prefix, long heartbeatTimeout) throws SQLException {
         List<String> servers = new ArrayList<>();
 
         try (PreparedStatement ps = conn.prepareStatement(
@@ -254,12 +302,32 @@ public class DatabaseUtils {
         return servers;
     }
 
-    public static void cleanupOldHeartbeats(Connection conn, String prefix, long retention) throws SQLException {
+    public static synchronized void cleanupOldHeartbeats(Connection conn, String prefix, long retention) throws SQLException {
         String sql = "DELETE FROM " + prefix + "servers WHERE last_seen < ?";
 
         long cutoff = System.currentTimeMillis() - retention;
 
         executeUpdate(conn, sql, cutoff);
+    }
+
+    public static synchronized void savePlayerAddress(Connection connection, String prefix, boolean isMySQL,
+                                                      String uuid, String address) throws SQLException {
+        String sql = isMySQL
+                ? "INSERT INTO " + prefix + "player_addresses (uuid, address, updated_at) VALUES (?, ?, ?) "
+                  + "ON DUPLICATE KEY UPDATE address = VALUES(address), updated_at = VALUES(updated_at)"
+                : "INSERT INTO " + prefix + "player_addresses (uuid, address, updated_at) VALUES (?, ?, ?) "
+                  + "ON CONFLICT(uuid) DO UPDATE SET address = excluded.address, updated_at = excluded.updated_at";
+        executeUpdate(connection, sql, uuid, address, System.currentTimeMillis());
+    }
+
+    public static synchronized String getPlayerAddress(Connection connection, String prefix, String uuid) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT address FROM " + prefix + "player_addresses WHERE uuid = ?")) {
+            statement.setString(1, uuid);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getString(1) : null;
+            }
+        }
     }
 
 

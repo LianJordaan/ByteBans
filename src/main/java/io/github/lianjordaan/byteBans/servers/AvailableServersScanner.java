@@ -14,7 +14,7 @@ public class AvailableServersScanner {
     private ByteBans plugin;
     private Connection connection;
     private BBLogger logger;
-    private List<String> availableServers;
+    private volatile List<String> availableServers = List.of();
 
     public AvailableServersScanner(ByteBans plugin) throws SQLException {
         this.plugin = plugin;
@@ -24,12 +24,14 @@ public class AvailableServersScanner {
 
     public BukkitTask startHeartbeat() {
         long interval = plugin.getConfig().getLong("available_servers.send_interval", 60) * 20;
+        String serverName = plugin.getServerName();
         return new BukkitRunnable() {
             @Override
             public void run() {
+                if (plugin.isShuttingDown()) return;
                 try {
                     logger.verbose("Sending server heartbeat...");
-                    DatabaseUtils.updateServerHeartbeat(connection, plugin.getDatabaseTablePrefix(), plugin.getConfig().getString("server.name", "*"));
+                    DatabaseUtils.updateServerHeartbeat(connection, plugin.getDatabaseTablePrefix(), serverName);
                     logger.verbose("Server heartbeat sent.");
                 } catch (SQLException e) {
                     logger.error("Failed to send server heartbeat!", e);
@@ -41,15 +43,16 @@ public class AvailableServersScanner {
 
     public BukkitTask startUpdate() {
         long interval = plugin.getConfig().getLong("available_servers.update_interval", 60) * 20;
+        long heartbeatTimeout = plugin.getConfig().getLong("available_servers.heartbeat_timeout", 600) * 1000;
         return new BukkitRunnable() {
             @Override
             public void run() {
+                if (plugin.isShuttingDown()) return;
                 try {
-                    long heartbeatTimeout = plugin.getConfig().getLong("available_servers.heartbeat_timeout", 600) * 1000;
                     String prefix = plugin.getDatabaseTablePrefix();
 
                     logger.verbose("Updating available servers...");
-                    availableServers = DatabaseUtils.getServerHeartbeats(connection, prefix, heartbeatTimeout);
+                    availableServers = List.copyOf(DatabaseUtils.getServerHeartbeats(connection, prefix, heartbeatTimeout));
                     logger.verbose("Available servers updated.");
                 } catch (SQLException e) {
                     logger.error("Failed to update available servers!", e);
@@ -61,11 +64,12 @@ public class AvailableServersScanner {
 
     public BukkitTask startCleanup() {
         long interval = plugin.getConfig().getLong("available_servers.heartbeat_cleanup_interval", 600) * 20;
+        long heartbeatRetention = plugin.getConfig().getLong("available_servers.heartbeat_retention", 3600) * 1000;
         return new BukkitRunnable() {
             @Override
             public void run() {
+                if (plugin.isShuttingDown()) return;
                 try {
-                    long heartbeatRetention = plugin.getConfig().getLong("available_servers.heartbeat_retention", 3600) * 1000;
                     String prefix = plugin.getDatabaseTablePrefix();
 
                     logger.verbose("Cleaning up old heartbeats...");

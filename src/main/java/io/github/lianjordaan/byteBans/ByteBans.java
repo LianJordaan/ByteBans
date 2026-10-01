@@ -5,6 +5,7 @@ import io.github.lianjordaan.byteBans.database.Database;
 import io.github.lianjordaan.byteBans.database.MySQLDatabase;
 import io.github.lianjordaan.byteBans.database.SQLiteDatabase;
 import io.github.lianjordaan.byteBans.listeners.ChatListener;
+import io.github.lianjordaan.byteBans.listeners.FreezeListener;
 import io.github.lianjordaan.byteBans.listeners.LoginListener;
 import io.github.lianjordaan.byteBans.punishments.PunishmentUpdater;
 import io.github.lianjordaan.byteBans.punishments.PunishmentsHandler;
@@ -15,15 +16,15 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
-import java.io.File;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 public final class ByteBans extends JavaPlugin {
     private BBLogger logger;
     private Database database;
-    private DatabaseUtils databaseUtils;
     private PunishmentsHandler punishmentsHandler;
     private PunishmentUpdater punishmentUpdater;
     private boolean usingMysql;
@@ -35,9 +36,13 @@ public final class ByteBans extends JavaPlugin {
     private BukkitTask availableServersUpdateLoop;
     private BukkitTask availableServersCleanupLoop;
     private String databaseTablePrefix;
+    private volatile boolean shuttingDown;
+    private volatile String serverName = "*";
+    private final Map<String, String> onlineAddresses = new ConcurrentHashMap<>();
 
     @Override
     public void onEnable() {
+        shuttingDown = false;
 
         // remove config.yml if it exists
 //        File configFile = new File(getDataFolder(), "config.yml");
@@ -47,6 +52,7 @@ public final class ByteBans extends JavaPlugin {
 
         // Plugin startup logic
         saveDefaultConfig();
+        serverName = getConfig().getString("server.name", "*");
         try {
             logger = new BBLogger(this);
             logger.info("Custom logging system initialized successfully.");
@@ -58,7 +64,7 @@ public final class ByteBans extends JavaPlugin {
 
 
         logger.verbose("Connecting to database...");
-        String type = getConfig().getString("storage.type", "mysql");
+        String type = getConfig().getString("storage.type", "sqlite");
         usingMysql = type.equalsIgnoreCase("mysql");
         try {
             if (type.equalsIgnoreCase("sqlite")) {
@@ -87,14 +93,12 @@ public final class ByteBans extends JavaPlugin {
         try {
             Connection conn = database.getConnection();
             databaseTablePrefix = getConfig().getString("storage.table_prefix", "bytebans_");
-
-            if (DatabaseUtils.tablesExist(conn, databaseTablePrefix + "punishments", databaseTablePrefix + "punishment_updates", databaseTablePrefix + "servers")) {
-                logger.verbose("All tables already exist.");
-            } else {
-                logger.info("Database tables do not exist. Creating tables...");
-                DatabaseUtils.createTables(conn, databaseTablePrefix, usingMysql);
-                logger.info("Successfully created tables for database.");
+            if (databaseTablePrefix == null || !databaseTablePrefix.matches("[A-Za-z][A-Za-z0-9_]{0,30}")) {
+                throw new IllegalArgumentException("storage.table_prefix must contain only letters, digits and underscores");
             }
+
+            DatabaseUtils.migrate(conn, databaseTablePrefix, usingMysql);
+            logger.info("Database schema is ready (version " + DatabaseUtils.SCHEMA_VERSION + ").");
         } catch (Exception e) {
             logger.error("Failed to create tables for database!", e);
             e.printStackTrace();
@@ -167,6 +171,12 @@ public final class ByteBans extends JavaPlugin {
 
             getCommand("removepunishment").setExecutor(new RemovePunishmentCommand(this));
             getCommand("refreshpunishments").setExecutor(new RefreshPunishmentCommand(this));
+            ModerationCommand moderation = new ModerationCommand(this);
+            for (String name : new String[]{"ipban", "ipunban", "ipmute", "ipunmute", "warn",
+                    "unwarn", "note", "removenote", "freeze", "unfreeze"}) {
+                getCommand(name).setExecutor(moderation);
+            }
+            getCommand("history").setExecutor(new HistoryCommand(this));
         } catch (Exception e) {
             logger.error("Failed to initialize plugin commands!", e);
             e.printStackTrace();
@@ -188,6 +198,11 @@ public final class ByteBans extends JavaPlugin {
 
             getCommand("removepunishment").setTabCompleter(new TabCompleter(this));
             logger.verbose("Registered removepunishment tab completer.");
+            TabCompleter moderationCompletion = new TabCompleter(this);
+            for (String name : new String[]{"ipban", "ipunban", "ipmute", "ipunmute", "warn",
+                    "unwarn", "note", "removenote", "history", "freeze", "unfreeze"}) {
+                getCommand(name).setTabCompleter(moderationCompletion);
+            }
         } catch (Exception e) {
             logger.error("Failed to register tab completers!", e);
             e.printStackTrace();
@@ -198,6 +213,7 @@ public final class ByteBans extends JavaPlugin {
         try {
             getServer().getPluginManager().registerEvents(new ChatListener(this), this);
             getServer().getPluginManager().registerEvents(new LoginListener(this), this);
+            getServer().getPluginManager().registerEvents(new FreezeListener(this), this);
         } catch (Exception e) {
             logger.error("Failed to register event listeners!", e);
             e.printStackTrace();
@@ -212,14 +228,30 @@ public final class ByteBans extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // Plugin shutdown logic
+        shuttingDown = true;
+        onlineAddresses.clear();
+        for (BukkitTask task : new BukkitTask[]{punishmentUpdateLoop, punishmentFullUpdateLoop,
+                punishmentUpdatePurgeLoop, availableServersHeartbeatLoop, availableServersUpdateLoop,
+                availableServersCleanupLoop}) {
+            if (task != null) task.cancel();
+        }
+        if (database != null) {
+            synchronized (DatabaseUtils.class) {
+                try {
+                    database.close();
+                } catch (SQLException e) {
+                    getLogger().log(Level.WARNING, "Failed to close ByteBans database", e);
+                }
+            }
+        }
     }
 
     public void reloadPlugin() {
         logger.info("Reloading plugin...");
         try {
             reloadConfig();
-            logger = new BBLogger(this);
+            serverName = getConfig().getString("server.name", "*");
+            logger.refresh();
             logger.info("Configuration reloaded successfully.");
         } catch (Exception e) {
             logger.error("Failed to reload plugin configuration", e);
@@ -245,7 +277,7 @@ public final class ByteBans extends JavaPlugin {
             if (availableServersCleanupLoop != null) {
                 availableServersCleanupLoop.cancel();
             }
-            punishmentUpdater.startUpdate();
+            punishmentUpdateLoop = punishmentUpdater.startUpdate();
             logger.verbose("Started punishment update loop.");
             punishmentFullUpdateLoop = punishmentUpdater.startFullUpdate();
             logger.verbose("Started punishment refresh loop.");
@@ -290,5 +322,25 @@ public final class ByteBans extends JavaPlugin {
 
     public String getDatabaseTablePrefix() {
         return databaseTablePrefix;
+    }
+
+    public boolean isShuttingDown() {
+        return shuttingDown;
+    }
+
+    public String getServerName() {
+        return serverName;
+    }
+
+    public void setOnlineAddress(String uuid, String address) {
+        onlineAddresses.put(uuid, address);
+    }
+
+    public String getOnlineAddress(String uuid) {
+        return onlineAddresses.get(uuid);
+    }
+
+    public void clearOnlineAddress(String uuid) {
+        onlineAddresses.remove(uuid);
     }
 }

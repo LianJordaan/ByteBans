@@ -2,7 +2,7 @@
 
 server:
   # Unique server name in a network
-  # Ignored in SQLite mode.
+  # Used for server-scoped punishments even with SQLite.
   # "*" = global bans (applies to all servers) even when using MySQL
   # Default: "*"
   name: "hub"
@@ -11,8 +11,8 @@ server:
 storage:
   # Storage type to use
   # Valid values: mysql, sqlite
-  # Default: mysql
-  type: mysql
+  # Default: sqlite. Existing config.yml files keep their selected storage.
+  type: sqlite
 
   table_prefix: "bytebans_"
 

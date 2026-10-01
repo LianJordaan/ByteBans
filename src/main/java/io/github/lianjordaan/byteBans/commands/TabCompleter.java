@@ -37,6 +37,8 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
         boolean hasReason;
         boolean hasScope;
         boolean hasId;
+        boolean hasIp;
+        boolean hasPage;
     }
 
     private ParamState getParamState(String[] args) {
@@ -48,13 +50,15 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
             else if (lower.startsWith("reason:")) state.hasReason = true;
             else if (lower.startsWith("scope:")) state.hasScope = true;
             else if (lower.startsWith("id:")) state.hasId = true;
+            else if (lower.startsWith("ip:")) state.hasIp = true;
+            else if (lower.startsWith("page:")) state.hasPage = true;
         }
         return state;
     }
 
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
-        List<String> availableServers = plugin.getAvailableServersScanner().getAvailableServers();
+        List<String> availableServers = new ArrayList<>(plugin.getAvailableServersScanner().getAvailableServers());
 
         availableServers.add("*");
 
@@ -73,6 +77,12 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
             case "unban": keys = new ArrayList<>(UNBAN_KEYS); break;
             case "kick": keys = new ArrayList<>(KICK_KEYS); break;
             case "removepunishment": keys = new ArrayList<>(REMOVEPUNISHMENT_KEYS); break;
+            case "ipban", "ipmute": keys = new ArrayList<>(Arrays.asList("ip:", "user:", "reason:", "scope:", "time:")); break;
+            case "ipunban", "ipunmute": keys = new ArrayList<>(Arrays.asList("ip:", "user:", "id:", "reason:")); break;
+            case "warn", "freeze": keys = new ArrayList<>(Arrays.asList("user:", "reason:", "scope:", "time:")); break;
+            case "note": keys = new ArrayList<>(Arrays.asList("user:", "reason:", "scope:")); break;
+            case "unwarn", "removenote", "unfreeze": keys = new ArrayList<>(Arrays.asList("user:", "id:", "reason:")); break;
+            case "history": keys = new ArrayList<>(Arrays.asList("user:", "ip:", "page:")); break;
             default: return Collections.emptyList();
         }
 
@@ -82,6 +92,8 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
         if (state.hasReason) keys.remove("reason:");
         if (state.hasScope) keys.remove("scope:");
         if (state.hasId) keys.remove("id:");
+        if (state.hasIp) keys.remove("ip:");
+        if (state.hasPage) keys.remove("page:");
 
         String currentArg = args.length == 0 ? "" : args[args.length - 1];
         List<String> completions = new ArrayList<>();
@@ -113,6 +125,12 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
                         break;
                     case "id":
                         completions.addAll(punishmentIdsStrings);
+                        break;
+                    case "ip":
+                        completions.add("ip:");
+                        break;
+                    case "page":
+                        completions.add("page:1");
                         break;
                 }
             } else {
@@ -156,6 +174,9 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
                 break;
             case "id":
                 completions.addAll(punishmentIdsStrings);
+                break;
+            case "page":
+                Arrays.asList("page:1", "page:2").forEach(completions::add);
                 break;
         }
 

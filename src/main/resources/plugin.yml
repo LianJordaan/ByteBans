@@ -1,5 +1,5 @@
 name: ByteBans
-version: '1.0.0'
+version: '1.1.0-SNAPSHOT'
 main: io.github.lianjordaan.byteBans.ByteBans
 api-version: '1.21'
 authors: [ LianJordaan ]
@@ -40,7 +40,64 @@ commands:
     description: Refreshes the punishments
     usage: /refreshpunishments
     permission: bytebans.refreshpunishments
+  ipban:
+    description: Bans an IP address, optionally for a duration
+    usage: /ipban ip:<address>|user:<name> [reason:<text>] [scope:<server>] [time:<duration>]
+    permission: bytebans.ipban
+  ipunban:
+    description: Removes an active IP ban
+    usage: /ipunban ip:<address>|user:<name>|id:<number> [reason:<text>]
+    permission: bytebans.ipunban
+  ipmute:
+    description: Mutes an IP address, optionally for a duration
+    usage: /ipmute ip:<address>|user:<name> [reason:<text>] [scope:<server>] [time:<duration>]
+    permission: bytebans.ipmute
+  ipunmute:
+    description: Removes an active IP mute
+    usage: /ipunmute ip:<address>|user:<name>|id:<number> [reason:<text>]
+    permission: bytebans.ipunmute
+  warn:
+    description: Records a warning for a player
+    usage: /warn user:<name> [reason:<text>] [scope:<server>] [time:<duration>]
+    permission: bytebans.warn
+  unwarn:
+    description: Removes an active warning
+    usage: /unwarn user:<name>|id:<number> [reason:<text>]
+    permission: bytebans.unwarn
+  note:
+    description: Records an admin note about a player
+    usage: /note user:<name> reason:<text> [scope:<server>]
+    permission: bytebans.note
+  removenote:
+    description: Removes an active admin note
+    usage: /removenote user:<name>|id:<number> [reason:<text>]
+    permission: bytebans.removenote
+  history:
+    description: Shows a player's or IP address's punishment history
+    usage: /history user:<name>|ip:<address> [page:<number>]
+    permission: bytebans.history
+  freeze:
+    description: Prevents a player from moving
+    usage: /freeze user:<name> [reason:<text>] [scope:<server>] [time:<duration>]
+    permission: bytebans.freeze
+  unfreeze:
+    description: Removes an active freeze
+    usage: /unfreeze user:<name>|id:<number> [reason:<text>]
+    permission: bytebans.unfreeze
 permissions:
+  bytebans.ipban: {default: op}
+  bytebans.ipunban: {default: op}
+  bytebans.ipmute: {default: op}
+  bytebans.ipunmute: {default: op}
+  bytebans.warn: {default: op}
+  bytebans.unwarn: {default: op}
+  bytebans.note: {default: op}
+  bytebans.removenote: {default: op}
+  bytebans.history: {default: op}
+  bytebans.freeze: {default: op}
+  bytebans.unfreeze: {default: op}
+  bytebans.notify.join_banned: {default: op}
+  bytebans.bypass: {default: op}
   bytebans.notify.silent:
     description: Allows the player to see silent punishments
     default: op
