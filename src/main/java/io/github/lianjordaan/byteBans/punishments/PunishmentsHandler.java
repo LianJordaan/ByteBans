@@ -241,15 +241,10 @@ public class PunishmentsHandler {
             return new Result(false, "No active " + type + " found for that target.");
         }
         try {
-            DatabaseUtils.executeUpdate(connection, "UPDATE " + plugin.getDatabaseTablePrefix()
-                    + "punishments SET active = ?, updated_at = ? WHERE id = ?",
-                    false, System.currentTimeMillis(), target.getId());
-            sendPunishmentUpdate(target.getId(), auditType, System.currentTimeMillis(), punisherUuid);
-            if (!punishSubject(target.getUuid(), subjectType, target.getSubject(), punisherUuid,
-                    auditType, reason, target.getScope(), 0, false, true)) {
-                logger.error("Punishment was deactivated, but its audit record could not be saved");
-            }
+            PunishmentData audit = DatabaseUtils.deactivateWithAudit(connection, plugin.getDatabaseTablePrefix(),
+                    target, punisherUuid, reason, auditType);
             reloadPunishments();
+            if (plugin.getDiscordNotifier() != null) plugin.getDiscordNotifier().record(audit);
             return new Result(true, "Removed " + type + " #" + target.getId() + ".");
         } catch (SQLException e) {
             logger.error("Failed to deactivate " + type + " #" + target.getId(), e);
@@ -485,6 +480,8 @@ public class PunishmentsHandler {
             } catch (SQLException e) {
                 logger.error("Punishment was saved, but the local cache could not be refreshed", e);
             }
+
+            if (plugin.getDiscordNotifier() != null) plugin.getDiscordNotifier().record(punishment.copy());
 
             return true;
 

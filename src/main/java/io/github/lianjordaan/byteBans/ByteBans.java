@@ -4,6 +4,8 @@ import io.github.lianjordaan.byteBans.commands.*;
 import io.github.lianjordaan.byteBans.database.Database;
 import io.github.lianjordaan.byteBans.database.MySQLDatabase;
 import io.github.lianjordaan.byteBans.database.SQLiteDatabase;
+import io.github.lianjordaan.byteBans.integrations.DiscordWebhookNotifier;
+import io.github.lianjordaan.byteBans.integrations.AdminWebPanel;
 import io.github.lianjordaan.byteBans.listeners.ChatListener;
 import io.github.lianjordaan.byteBans.listeners.FreezeListener;
 import io.github.lianjordaan.byteBans.listeners.LoginListener;
@@ -37,6 +39,8 @@ public final class ByteBans extends JavaPlugin {
     private BukkitTask availableServersCleanupLoop;
     private String databaseTablePrefix;
     private volatile boolean shuttingDown;
+    private volatile DiscordWebhookNotifier discordNotifier;
+    private AdminWebPanel adminWebPanel;
     private volatile String serverName = "*";
     private final Map<String, String> onlineAddresses = new ConcurrentHashMap<>();
 
@@ -56,6 +60,7 @@ public final class ByteBans extends JavaPlugin {
         try {
             logger = new BBLogger(this);
             logger.info("Custom logging system initialized successfully.");
+            discordNotifier = DiscordWebhookNotifier.fromConfig(getConfig(), getLogger());
         } catch (Exception e) {
             Bukkit.getLogger().log(Level.SEVERE, "Failed to initialize logging system! Disabling plugin...", e);
             Bukkit.getPluginManager().disablePlugin(this);
@@ -222,6 +227,12 @@ public final class ByteBans extends JavaPlugin {
         }
         logger.verbose("Successfully registered event listeners.");
 
+        try {
+            adminWebPanel = AdminWebPanel.startIfEnabled(this);
+        } catch (Exception error) {
+            getLogger().warning("Admin web panel could not start: " + error.getMessage());
+        }
+
 
         logger.info("ByteBans was successfully initialized.");
     }
@@ -229,6 +240,8 @@ public final class ByteBans extends JavaPlugin {
     @Override
     public void onDisable() {
         shuttingDown = true;
+        if (discordNotifier != null) discordNotifier.close();
+        if (adminWebPanel != null) adminWebPanel.close();
         onlineAddresses.clear();
         for (BukkitTask task : new BukkitTask[]{punishmentUpdateLoop, punishmentFullUpdateLoop,
                 punishmentUpdatePurgeLoop, availableServersHeartbeatLoop, availableServersUpdateLoop,
@@ -252,6 +265,15 @@ public final class ByteBans extends JavaPlugin {
             reloadConfig();
             serverName = getConfig().getString("server.name", "*");
             logger.refresh();
+            if (discordNotifier != null) discordNotifier.close();
+            discordNotifier = DiscordWebhookNotifier.fromConfig(getConfig(), getLogger());
+            if (adminWebPanel != null) adminWebPanel.close();
+            adminWebPanel = null;
+            try {
+                adminWebPanel = AdminWebPanel.startIfEnabled(this);
+            } catch (Exception error) {
+                getLogger().warning("Admin web panel could not restart: " + error.getMessage());
+            }
             logger.info("Configuration reloaded successfully.");
         } catch (Exception e) {
             logger.error("Failed to reload plugin configuration", e);
@@ -330,6 +352,10 @@ public final class ByteBans extends JavaPlugin {
 
     public String getServerName() {
         return serverName;
+    }
+
+    public DiscordWebhookNotifier getDiscordNotifier() {
+        return discordNotifier;
     }
 
     public void setOnlineAddress(String uuid, String address) {

@@ -135,6 +135,60 @@ public class DatabaseUtils {
         }
     }
 
+    /** Deactivate one record and insert its undo audit row as a single database transaction. */
+    public static synchronized PunishmentData deactivateWithAudit(Connection connection, String prefix,
+            PunishmentData target, String actor, String reason, String auditType) throws SQLException {
+        validatePrefix(prefix);
+        if (!connection.getAutoCommit()) throw new SQLException("ByteBans database has an unexpected open transaction");
+        long now = System.currentTimeMillis();
+        try {
+            connection.setAutoCommit(false);
+            try (PreparedStatement update = connection.prepareStatement("UPDATE " + prefix
+                    + "punishments SET active = ?, updated_at = ? WHERE id = ? AND active = ?")) {
+                update.setBoolean(1, false);
+                update.setLong(2, now);
+                update.setLong(3, target.getId());
+                update.setBoolean(4, true);
+                if (update.executeUpdate() != 1) throw new SQLException("Punishment was already changed by another server");
+            }
+            long auditId = executeInsert(connection, "INSERT INTO " + prefix
+                            + "punishments (uuid, subject_type, subject, punisher_uuid, type, reason, scope, "
+                            + "start_time, duration, active, created_at, updated_at, silent) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    target.getUuid(), target.getSubjectType(), target.getSubject(), actor, auditType, reason,
+                    target.getScope(), now, 0, false, now, now, true);
+            executeUpdate(connection, "INSERT INTO " + prefix
+                    + "punishment_updates (punishment_id, action, timestamp, changed_by) VALUES (?, ?, ?, ?)",
+                    target.getId(), auditType, now, actor);
+            executeUpdate(connection, "INSERT INTO " + prefix
+                    + "punishment_updates (punishment_id, action, timestamp, changed_by) VALUES (?, ?, ?, ?)",
+                    auditId, auditType, now, actor);
+            connection.commit();
+            PunishmentData audit = new PunishmentData();
+            audit.setId(auditId);
+            audit.setUuid(target.getUuid());
+            audit.setSubjectType(target.getSubjectType());
+            audit.setSubject(target.getSubject());
+            audit.setPunisherUuid(actor);
+            audit.setType(auditType);
+            audit.setReason(reason);
+            audit.setScope(target.getScope());
+            audit.setStartTime(now);
+            audit.setDuration(0);
+            audit.setActive(false);
+            audit.setCreatedAt(now);
+            audit.setUpdatedAt(now);
+            audit.setSilent(true);
+            return audit;
+        } catch (SQLException error) {
+            try { connection.rollback(); }
+            catch (SQLException rollback) { error.addSuppressed(rollback); }
+            throw error;
+        } finally {
+            connection.setAutoCommit(true);
+        }
+    }
+
 
     /**
      * Checks if a table exists in the current database.

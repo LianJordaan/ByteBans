@@ -164,6 +164,9 @@ public class CommandUtils {
     }
 
     public static Result getUsernameFromUuid(String uuid) {
+        if (uuid != null && uuid.matches("WEB:[A-Za-z0-9_]{3,16}")) {
+            return new Result(true, uuid);
+        }
         for (OfflinePlayer player : Bukkit.getOfflinePlayers()) {
             if (player.getUniqueId().toString().equalsIgnoreCase(uuid)) {
                 return new Result(true, player.getName());

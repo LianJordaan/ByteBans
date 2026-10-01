@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.Statement;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -125,6 +126,36 @@ class PunishmentLookupTest {
             PunishmentData exposed = handler.history("PLAYER", PLAYER).getFirst();
             exposed.setReason("tampered");
             assertNotEquals("tampered", handler.history("PLAYER", PLAYER).getFirst().getReason());
+        }
+    }
+
+    @Test
+    void failedUndoAuditRollsBackTheOriginalPunishment() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite::memory:")) {
+            DatabaseUtils.migrate(connection, "bytebans_", false);
+            ByteBans plugin = mock(ByteBans.class);
+            Database database = mock(Database.class);
+            when(plugin.getDatabase()).thenReturn(database);
+            when(database.getConnection()).thenReturn(connection);
+            when(plugin.getDatabaseTablePrefix()).thenReturn("bytebans_");
+            when(plugin.getBBLogger()).thenReturn(mock(BBLogger.class));
+            when(plugin.getServerName()).thenReturn("hub");
+            when(plugin.isShuttingDown()).thenReturn(true);
+            PunishmentsHandler handler = new PunishmentsHandler(plugin);
+            handler.loadPunishments();
+            assertTrue(handler.punishSubject("IP", "IP", "203.0.113.8", "CONSOLE",
+                    "ipban", "abuse", "*", 0, true, false));
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate("CREATE TRIGGER block_undo BEFORE INSERT ON bytebans_punishments "
+                        + "WHEN NEW.type = 'ipunban' BEGIN SELECT RAISE(FAIL, 'blocked audit'); END");
+            }
+            assertFalse(handler.deactivateSubject("IP", "203.0.113.8", "ipban", null,
+                    "CONSOLE", "appeal", "ipunban").isSuccess());
+            assertNotNull(handler.isIpBanned("203.0.113.8"));
+            PunishmentsHandler reloaded = new PunishmentsHandler(plugin);
+            reloaded.loadPunishments();
+            assertNotNull(reloaded.isIpBanned("203.0.113.8"));
+            assertEquals(1, reloaded.history("IP", "203.0.113.8").size());
         }
     }
 

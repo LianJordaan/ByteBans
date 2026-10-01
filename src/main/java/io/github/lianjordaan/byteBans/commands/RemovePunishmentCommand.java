@@ -9,7 +9,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.command.RemoteConsoleCommandSender;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
@@ -26,6 +27,10 @@ public class RemovePunishmentCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
+        if (!consoleOnly(sender)) {
+            sender.sendMessage(miniMessage.deserialize("<red>Only the server console can permanently remove history."));
+            return true;
+        }
 
         Map<String, String> parsed = CommandUtils.parseArgs(args, "id");
 
@@ -36,21 +41,15 @@ public class RemovePunishmentCommand implements CommandExecutor {
         long idNum = 0;
         try {
             idNum = Long.parseLong(id);
+            if (idNum <= 0) throw new NumberFormatException("ID must be positive");
         } catch (NumberFormatException e) {
             logger.verbose("Invalid ID: " + id);
             sender.sendMessage(miniMessage.deserialize("<red>Invalid ID: " + id));
             return true;
         }
-        String uuid;
-        if (sender instanceof Player) {
-            uuid = ((Player) sender).getUniqueId().toString();
-        } else {
-            uuid = "CONSOLE";
-        }
-
         long finalIdNum = idNum;
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            Result result = plugin.getPunishmentsHandler().removePunishment(uuid, finalIdNum);
+            Result result = plugin.getPunishmentsHandler().removePunishment("CONSOLE", finalIdNum);
             if (result.isSuccess()) {
                 Bukkit.getScheduler().runTask(plugin, () ->
                         sender.sendMessage(miniMessage.deserialize("<green>Successfully removed punishment.")));
@@ -61,5 +60,9 @@ public class RemovePunishmentCommand implements CommandExecutor {
             }
         });
         return true;
+    }
+
+    static boolean consoleOnly(CommandSender sender) {
+        return sender instanceof ConsoleCommandSender || sender instanceof RemoteConsoleCommandSender;
     }
 }

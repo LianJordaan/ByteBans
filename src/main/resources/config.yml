@@ -46,6 +46,23 @@ storage:
     password: ""
 
 
+# Optional, outbound-only staff notifications. No Discord bot or remote commands.
+discord:
+  enabled: false
+  # Paste a Discord webhook URL from a private staff channel. Keep config.yml private.
+  webhook_url: ""
+  # Notes often contain sensitive information, so they are excluded by default.
+  include_notes: false
+
+
+# Optional administration page. It listens inside the server on 127.0.0.1 only.
+# The access token is generated at plugins/ByteBans/admin-web-token.txt on first enable.
+# Anyone with that token can read history and issue all moderation actions.
+admin_web:
+  enabled: false
+  port: 8765
+
+
 # Synchronization settings
 sync:
   # How often to poll the database for changes
