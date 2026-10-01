@@ -53,6 +53,16 @@ def remote_paper_sha(host, instance_id, version, build):
     return result.stdout.split()[0]
 
 
+def startup_diagnostics(logs):
+    """Keep a passing event probe from masking a failed ByteBans startup."""
+    lines = logs.splitlines()
+    enabled = any('[ByteBans] ByteBans was successfully initialized.' in line for line in lines)
+    failures = [line for line in lines if
+                ('Error occurred while enabling ByteBans' in line
+                 or ('[ByteBans]' in line and re.search(r'\b(?:ERROR|SEVERE)\b', line)))]
+    return {'initialized': enabled, 'fatal_lines': failures[:10]}
+
+
 def run(target, transport, host, profile, artifacts, folder, config, revision):
     record = None
     result = {'target': target, 'source_revision': revision,
@@ -88,6 +98,10 @@ def run(target, transport, host, profile, artifacts, folder, config, revision):
         if result['paper_sha256_actual'] != target['paper_sha256']:
             result['status'] = 'paper_hash_mismatch'
         result['logs'] = transport.call('logs', id=record['id'])
+        result['startup_diagnostics'] = startup_diagnostics(result['logs'])
+        if result['status'] == 'pass' and (not result['startup_diagnostics']['initialized']
+                                           or result['startup_diagnostics']['fatal_lines']):
+            result['status'] = 'startup_diagnostic_failed'
     except Exception as error:
         result['status'] = 'error'
         result['error'] = str(error)
