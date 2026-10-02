@@ -52,6 +52,7 @@ MATRIX_SHA256 = "350ecab8c78baaf7f9b7ec643e48d62c9f3a8f7b18b2f166e1c3bb5f619bb8b
 PAPER_1214_SHA256 = "5ee4f542f628a14c644410b08c94ea42e772ef4d29fe92973636b6813d4eaffc"
 CLIENT_VERSIONS = ("1.21", "1.21.4", "1.21.11")
 CLIENT_SCRIPT_SHA256 = "b794fb13e5d43fdc565cf6db0ccd4503a54f2ecfdd522260fe600d24eb08dbef"
+NETWORK_RUNNER_SHA256 = "2aeaacddcf165a15dd624252424ee5fde0677c8bba9623e85abe2c24fdcb3a60"
 VERSION_ID = re.compile(r"[A-Za-z0-9]{8,16}\Z")
 INSTANCE_ID = re.compile(r"mw-[a-f0-9]{16}\Z")
 HEX64 = re.compile(r"[a-f0-9]{64}\Z")
@@ -65,6 +66,14 @@ EXPECTED_CLIENT_CHECKS = frozenset({
     "ip_ban_rejects_shared_address", "ip_unban_restores_join",
     "ip_mute_blocks_shared_address_chat", "freeze_holds_real_client",
     "unfreeze_restores_real_movement",
+})
+EXPECTED_NETWORK_CHECKS = frozenset({
+    "isolated_mariadb_started", "two_paper_servers_started",
+    "initial_histories_empty", "scoped_ban_beta_only",
+    "cross_server_unban_history", "global_ban_both_servers",
+    "restart_loads_shared_ban", "scoped_mute_beta_only",
+    "cross_server_unmute_history", "global_mute_alpha_enforced",
+    "services_stopped_cleanly",
 })
 
 
@@ -181,6 +190,78 @@ def _web_issues(row: dict) -> list[str]:
             or set(checks) != EXPECTED_WEB_CHECKS
             or not HEX64.fullmatch(str(row.get("script_sha256", "")))):
         return ["Admin web HTTP/SQLite smoke is missing or differs from the frozen candidate"]
+    return []
+
+
+def _network_issues(row: dict, base: Path) -> list[str]:
+    """Require a real two-server MySQL receipt for the network-sync claim."""
+    runner = base / "run_local_mysql_network.py"
+    checks = row.get("checks")
+    servers = row.get("servers")
+    stops = row.get("stops")
+    observations = row.get("observations")
+    if (row.get("status") != "pass" or row.get("error")
+            or row.get("source_revision") != SOURCE_REVISION
+            or row.get("candidate_sha512") != CANDIDATE_SHA512
+            or row.get("runner_sha256") != NETWORK_RUNNER_SHA256
+            or row.get("client_sha256") != CLIENT_SCRIPT_SHA256
+            or runner.is_symlink() or not runner.is_file()
+            or digest(runner, "sha256") != NETWORK_RUNNER_SHA256
+            or row.get("paper_version") != "1.21.4"
+            or row.get("paper_build") != 232
+            or row.get("paper_sha256") != PAPER_1214_SHA256
+            or row.get("java_major") != 21 or row.get("mariadb_port") != 27314
+            or not re.fullmatch(r"/tmp/bytebans-network-[a-f0-9]{12}",
+                                str(row.get("mariadb_data_path", "")))
+            or row.get("mariadb_stopped") is not True
+            or row.get("mariadb_exit_code") != 0
+            or not row.get("started_at") or not row.get("finished_at")
+            or not isinstance(checks, dict)
+            or set(checks) != EXPECTED_NETWORK_CHECKS
+            or any(value is not True for value in checks.values())):
+        return ["Two-server MySQL receipt is missing, changed, or incomplete"]
+    if (not isinstance(servers, list) or len(servers) != 2
+            or not all(isinstance(server, dict) for server in servers)
+            or {(server.get("name"), server.get("game_port"), server.get("rcon_port"))
+                for server in servers}
+               != {("alpha", 27310, 27312), ("beta", 27311, 27313)}
+            or len({server.get("instance_id") for server in servers}) != 2
+            or any(not INSTANCE_ID.fullmatch(str(server.get("instance_id", "")))
+                   or server.get("candidate_sha512_actual") != CANDIDATE_SHA512
+                   for server in servers)):
+        return ["Two-server MySQL instance or installed-JAR identity is invalid"]
+    if (not isinstance(stops, list) or len(stops) != 3
+            or not all(isinstance(stop, dict) for stop in stops)
+            or {stop.get("label") for stop in stops}
+               != {"alpha", "beta", "beta-before-restart"}
+            or any(stop.get("stopped") is not True or stop.get("exit_code") != 0
+                   for stop in stops)):
+        return ["Two-server MySQL test left a Paper process running or failed shutdown"]
+    expected_ids = ("scoped_ban_id", "global_ban_id", "scoped_mute_id", "global_mute_id")
+    expected_logs = ("alpha_server.log_sha256", "beta_server.log_sha256",
+                     "beta_server-restart.log_sha256")
+    if (not isinstance(observations, dict)
+            or any(type(observations.get(key)) is not int or observations[key] <= 0
+                   for key in expected_ids)
+            or len({observations[key] for key in expected_ids}) != 4
+            or any(not HEX64.fullmatch(str(observations.get(key, "")))
+                   for key in expected_logs)):
+        return ["Two-server MySQL punishment IDs or diagnostic hashes are incomplete"]
+    for server in servers:
+        folder = Path(str(server.get("path", "")))
+        if folder.is_symlink() or not folder.is_dir():
+            return ["Two-server MySQL world or server diagnostics disappeared"]
+        names = ("server.log", "server-restart.log") if server["name"] == "beta" else ("server.log",)
+        for name in names:
+            log = folder / name
+            if log.is_symlink() or not log.is_file() or digest(log, "sha256") != observations[
+                    f"{server['name']}_{name}_sha256"]:
+                return ["Two-server MySQL server log differs from its receipt"]
+            content = log.read_text(encoding="utf-8", errors="replace")
+            if ("[ByteBans] ByteBans was successfully initialized." not in content
+                    or "Error occurred while enabling ByteBans" in content
+                    or re.search(r"Could not pass event .+ to ByteBans", content)):
+                return ["Two-server MySQL log lacks a clean ByteBans startup"]
     return []
 
 
@@ -372,6 +453,14 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
         _, path, row = web
         receipt_paths["admin_web"] = str(path)
         issues.extend(_web_issues(row))
+
+    network = _latest_receipt(runs, "*-local-mysql-network/result.json", CANDIDATE_SHA512)
+    if network is None:
+        issues.append("Two-server MySQL sync receipt is missing")
+    else:
+        _, path, row = network
+        receipt_paths["mysql_network"] = str(path)
+        issues.extend(_network_issues(row, base))
 
     purpur = purpur_release_evidence.audit(
         base, CANDIDATE_SHA512, PROBE_SHA512,

@@ -118,6 +118,8 @@ class ReleaseGateTests(unittest.TestCase):
             "manifest_marker": gate.make_paper_companion.MARKER.decode("ascii").strip(),
         })
         shutil.copyfile(gate.HERE / "matrix.json", self.base / "matrix.json")
+        shutil.copyfile(gate.HERE / "run_local_mysql_network.py",
+                        self.base / "run_local_mysql_network.py")
         matrix = json.loads((self.base / "matrix.json").read_text(encoding="utf-8"))
         self.targets = matrix["targets"]
         self.matrix_folder = self.base / "runs/20261001T220000Z"
@@ -134,6 +136,7 @@ class ReleaseGateTests(unittest.TestCase):
             write_json(self.companion_folder / (target["id"] + ".json"), original)
         self._write_client()
         self._write_web()
+        self._write_network()
         shutil.copyfile(gate.HERE / "purpur-matrix.json",
                         self.base / "purpur-matrix.json")
         self.purpur_pins = json.loads((self.base / "purpur-matrix.json").read_text(
@@ -218,6 +221,55 @@ class ReleaseGateTests(unittest.TestCase):
             "paper_sha256": gate.PAPER_1214_SHA256, "java": 21,
             "script_sha256": "b" * 64, "recorded_at": "2026-10-01T22:06:00+00:00",
             "checks": sorted(gate.EXPECTED_WEB_CHECKS),
+        })
+
+    def _write_network(self):
+        self.network_path = (self.base /
+                             "runs/20261001T220300Z-local-mysql-network/result.json")
+        alpha = self.base / "live/mw-aaaaaaaaaaaaaaaa"
+        beta = self.base / "live/mw-bbbbbbbbbbbbbbbb"
+        alpha.mkdir(parents=True)
+        beta.mkdir(parents=True)
+        diagnostic = "[ByteBans] ByteBans was successfully initialized.\n"
+        logs = {"alpha_server.log_sha256": alpha / "server.log",
+                "beta_server.log_sha256": beta / "server.log",
+                "beta_server-restart.log_sha256": beta / "server-restart.log"}
+        for path in logs.values():
+            path.write_text(diagnostic, encoding="utf-8")
+        write_json(self.network_path, {
+            "source_revision": self.source,
+            "candidate_sha512": self.candidate_sha,
+            "runner_sha256": gate.NETWORK_RUNNER_SHA256,
+            "client_sha256": gate.CLIENT_SCRIPT_SHA256,
+            "status": "pass", "started_at": "2026-10-01T22:00:00+00:00",
+            "finished_at": "2026-10-01T22:10:00+00:00",
+            "paper_version": "1.21.4", "paper_build": 232,
+            "paper_sha256": gate.PAPER_1214_SHA256, "java_major": 21,
+            "mariadb_port": 27314,
+            "mariadb_data_path": "/tmp/bytebans-network-111111111111",
+            "mariadb_stopped": True, "mariadb_exit_code": 0,
+            "checks": {key: True for key in gate.EXPECTED_NETWORK_CHECKS},
+            "observations": {
+                "scoped_ban_id": 1, "global_ban_id": 3,
+                "scoped_mute_id": 5, "global_mute_id": 7,
+                **{key: hashlib.sha256(path.read_bytes()).hexdigest()
+                   for key, path in logs.items()},
+            },
+            "servers": [
+                {"name": "alpha", "instance_id": "mw-aaaaaaaaaaaaaaaa",
+                 "path": str(alpha),
+                 "game_port": 27310, "rcon_port": 27312,
+                 "candidate_sha512_actual": self.candidate_sha},
+                {"name": "beta", "instance_id": "mw-bbbbbbbbbbbbbbbb",
+                 "path": str(beta),
+                 "game_port": 27311, "rcon_port": 27313,
+                 "candidate_sha512_actual": self.candidate_sha},
+            ],
+            "stops": [
+                {"label": "beta-before-restart", "stopped": True, "exit_code": 0},
+                {"label": "alpha", "stopped": True, "exit_code": 0},
+                {"label": "beta", "stopped": True, "exit_code": 0},
+            ],
         })
 
     def _write_purpur_target(self, index, pin, mode):
@@ -321,6 +373,16 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertEqual(28, len([key for key in plan["receipts"] if key.startswith("purpur-")]))
         self.assertEqual(3, len([key for key in plan["receipts"]
                                  if key.startswith("real_offline_client_")]))
+        self.assertIn("mysql_network", plan["receipts"])
+
+    def test_missing_or_failed_mysql_network_proof_blocks_release(self):
+        row = json.loads(self.network_path.read_text(encoding="utf-8"))
+        self.network_path.unlink()
+        self.assertFalse(gate.audit(base=self.base)["ready"])
+        write_json(self.network_path, {**row, "status": "fail"})
+        self.assertFalse(gate.audit(base=self.base)["ready"])
+        write_json(self.network_path, {**row, "mariadb_stopped": False})
+        self.assertFalse(gate.audit(base=self.base)["ready"])
 
     def test_missing_failed_and_mismatched_targets_fail_closed(self):
         target = self.targets[0]

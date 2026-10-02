@@ -34,7 +34,7 @@ Player names are resolved from this server's known player records. A player must
 
 ## Development
 
-Run `mvn test` for migration and enforcement checks, and `mvn package` for the shaded JAR. The test suite covers upgrading a legacy SQLite database, fresh address records, scope and expiration lookup, IP login denial, IP chat muting, freeze movement and command permission denial. Live server compatibility is recorded separately from these automated checks.
+Run `mvn test` for migration and enforcement checks, and `mvn package` for the shaded JAR. The test suite covers upgrading a legacy SQLite database, fresh address records, scope and expiration lookup, IP login denial, IP chat muting, freeze movement and command permission denial. A two-server Paper 1.21.4 check also verified scoped/global punishment propagation through an isolated MariaDB database, real offline-client enforcement, history, undo, and restart persistence. [The exact-JAR test record](private-probe/RESULTS.md) separates that one-version network check from the wider Paper/Purpur compatibility matrix; a production MySQL network and Microsoft-authenticated clients were not tested.
 
 ## Optional Discord notifications
 
