@@ -27,7 +27,7 @@ class FakeClient:
         self.prior = {
             "id": gate.PRIOR_VERSION_ID, "project_id": gate.PROJECT_ID,
             "version_number": "1.0.0", "status": "listed",
-            "environment": "unknown", "loaders": list(gate.PRIOR_LOADERS),
+            "project_types": ["plugin"], "loaders": list(gate.PRIOR_LOADERS),
             "game_versions": list(gate.PRIOR_GAME_VERSIONS),
             "files": [{"primary": True, "hashes": {"sha512": gate.PRIOR_VERSION_SHA512}}],
         }
@@ -54,6 +54,7 @@ class FakeClient:
         raise AssertionError("Unknown fake version")
 
     def create_version(self, payload, jar):
+        assert "environment" not in payload
         if self.fail_second_once and len(self.new) == 1:
             self.fail_second_once = False
             raise RuntimeError("Simulated second-version upload interruption")
@@ -63,7 +64,8 @@ class FakeClient:
         value = {
             **{key: payload[key] for key in ("project_id", "name", "version_number",
                                           "changelog", "game_versions", "loaders",
-                                          "version_type", "status", "environment")},
+                                          "version_type", "status")},
+            "project_types": ["plugin"],
             "id": "BBTest" + str(11 + len(self.new)), "files": [{"primary": True, "hashes": {
                 "sha512": hashlib.sha512(jar.read_bytes()).hexdigest(),
                 "sha1": hashlib.sha1(jar.read_bytes()).hexdigest(),
@@ -74,6 +76,34 @@ class FakeClient:
 
 
 class ReleaseGateTests(unittest.TestCase):
+    def test_authenticated_v3_version_reads_do_not_use_v2_helper(self):
+        client = gate.ModrinthClient.__new__(gate.ModrinthClient)
+        client.token = "test-token"
+        client.ws = type("Workspace", (), {"AGENT": "ByteBans-test"})()
+        requested = []
+
+        class Response:
+            ok = True
+            status_code = 200
+
+            def json(self):
+                return []
+
+        def get(url, *, headers, timeout):
+            requested.append((url, headers, timeout))
+            return Response()
+
+        with patch("requests.get", side_effect=get):
+            self.assertEqual([], client.list_versions())
+            self.assertEqual([], client.get_version("BBTest11"))
+        self.assertEqual([
+            gate.API_V3 + "/project/" + gate.PROJECT_ID + "/version",
+            gate.API_V3 + "/version/BBTest11",
+        ], [url for url, _, _ in requested])
+        self.assertTrue(all(headers == {"Authorization": "test-token",
+                                        "User-Agent": "ByteBans-test"}
+                            for _, headers, _ in requested))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -567,6 +597,22 @@ class ReleaseGateTests(unittest.TestCase):
             client.create_version(payload, artifact)
         client.created = 0
         client.new[1]["loaders"] = ["paper", "purpur"]
+        with self.assertRaisesRegex(ValueError, "different metadata"):
+            gate.publish(base=self.base, client=client, user_requested_upload=True)
+        self.assertEqual(0, client.created)
+
+    def test_plugin_project_type_is_required_for_existing_and_new_versions(self):
+        client = FakeClient(self.jar)
+        client.prior["project_types"] = ["mod"]
+        with self.assertRaisesRegex(ValueError, "1.0.0 release differs"):
+            gate.publish(base=self.base, client=client, user_requested_upload=True)
+        self.assertEqual(0, client.created)
+
+        client = FakeClient(self.jar)
+        payload = gate.audit(base=self.base)["payloads"][0]
+        client.create_version(payload, self.jar)
+        client.created = 0
+        client.new[0]["project_types"] = ["mod"]
         with self.assertRaisesRegex(ValueError, "different metadata"):
             gate.publish(base=self.base, client=client, user_requested_upload=True)
         self.assertEqual(0, client.created)

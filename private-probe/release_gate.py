@@ -25,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 WORKSPACE = REPO.parents[1]
 PROJECT_ID = "ysEBBeJv"
+API_V3 = "https://api.modrinth.com/v3"
 PRIOR_VERSION_ID = "9oClMk0K"
 PRIOR_VERSION_SHA512 = (
     "7fdb3ae585ad0c3576638b73647f2615195901af361f6d14422aaac89309110ecd79e8460308aecc26dde745c006e3e3d0a0be440da1e70626496e16048d5313"
@@ -501,7 +502,7 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
             and not issues and changelog and reviewed_status):
         common = {"project_id": PROJECT_ID, "changelog": changelog,
                   "version_type": "beta", "featured": False,
-                  "status": reviewed_status, "environment": "dedicated_server_only",
+                  "status": reviewed_status,
                   "dependencies": [], "file_parts": ["primary"], "primary_file": "primary"}
         payloads = [
             {**common, "name": VERSION_NAME, "version_number": VERSION_NUMBER,
@@ -558,15 +559,26 @@ class ModrinthClient:
             raise RuntimeError(f"Modrinth ByteBans disclosure read failed (HTTP {response.status_code})")
         return response.json().get("disclosures", [])
 
+    def _get_v3(self, path: str):
+        import requests
+        if not path.startswith(("/project/" + PROJECT_ID + "/version", "/version/")):
+            raise ValueError("Unexpected Modrinth v3 read path")
+        response = requests.get(
+            API_V3 + path,
+            headers={"Authorization": self.token, "User-Agent": self.ws.AGENT},
+            timeout=30,
+        )
+        if not response.ok:
+            raise RuntimeError(f"Modrinth ByteBans v3 read failed (HTTP {response.status_code})")
+        return response.json()
+
     def list_versions(self):
-        from dashboard.services.modrinth import get_json
-        return get_json(self.ws.API + "/project/" + PROJECT_ID + "/version", self.token)
+        return self._get_v3("/project/" + PROJECT_ID + "/version")
 
     def get_version(self, version_id: str):
         if not VERSION_ID.fullmatch(version_id):
             raise ValueError("Unexpected Modrinth version ID")
-        from dashboard.services.modrinth import get_json
-        return get_json(self.ws.API + "/version/" + version_id, self.token)
+        return self._get_v3("/version/" + version_id)
 
     def create_version(self, payload: dict, jar: Path) -> str:
         import requests
@@ -577,7 +589,7 @@ class ModrinthClient:
         if expected_hash is None or hashlib.sha512(content).hexdigest() != expected_hash:
             raise ValueError("ByteBans JAR changed before Modrinth upload")
         response = requests.post(
-            self.ws.API + "/version",
+            API_V3 + "/version",
             headers={"Authorization": self.token, "User-Agent": self.ws.AGENT},
             files={"data": (None, json.dumps(payload), "application/json"),
                    "primary": (jar.name, content, "application/java-archive")},
@@ -605,7 +617,7 @@ def _prior_signature(version: dict):
             or version.get("version_number") != "1.0.0" or file is None
             or (file.get("hashes") or {}).get("sha512") != PRIOR_VERSION_SHA512
             or version.get("status") != "listed"
-            or version.get("environment") != "unknown"
+            or version.get("project_types") != ["plugin"]
             or sorted(version.get("loaders") or []) != sorted(PRIOR_LOADERS)
             or sorted(version.get("game_versions") or []) != sorted(PRIOR_GAME_VERSIONS)):
         raise ValueError("Existing ByteBans 1.0.0 release differs from its pinned identity")
@@ -624,11 +636,11 @@ def _verify_new_version(version: dict, payload: dict, jar: Path) -> bool:
     return bool(
         isinstance(version.get("id"), str) and VERSION_ID.fullmatch(version["id"])
         and version.get("project_id") == PROJECT_ID
+        and version.get("project_types") == ["plugin"]
         and version.get("version_number") == payload["version_number"]
         and version.get("name") == payload["name"]
         and version.get("version_type") == payload["version_type"]
         and version.get("status") == payload["status"]
-        and version.get("environment") == payload["environment"]
         and version.get("changelog") == payload["changelog"]
         and isinstance(versions, list) and len(versions) == len(payload["game_versions"])
         and set(versions) == set(payload["game_versions"])
