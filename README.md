@@ -1,6 +1,6 @@
 # ByteBans
 
-ByteBans keeps bans, mutes, kicks and other moderation records in SQLite or MySQL. Punishments can apply to one server, several named servers or every server in a shared database. The current source builds against Paper 1.21 with Java 21. Version `1.1.0` is a beta release candidate; its tested Paper versions are recorded in [the private probe results](private-probe/RESULTS.md). It has not yet been published on Modrinth.
+ByteBans keeps bans, mutes, kicks and other moderation records in SQLite or MySQL. Punishments can apply to one server, several named servers or every server in a shared database. The current source builds against Paper 1.21 with Java 21. The frozen `1.1.0` beta JAR passed live checks on fifteen Paper and fourteen Purpur Minecraft versions; [the test record](private-probe/RESULTS.md) lists exact builds and limits. Use Java 21 for the tested 1.21.x servers and Java 25 for the tested 26.x servers. Bukkit and Spigot have not been verified for this JAR.
 
 ## Install
 

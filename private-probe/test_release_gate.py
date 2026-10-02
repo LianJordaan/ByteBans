@@ -29,7 +29,8 @@ class FakeClient:
             "game_versions": list(gate.PRIOR_GAME_VERSIONS),
             "files": [{"primary": True, "hashes": {"sha512": gate.PRIOR_VERSION_SHA512}}],
         }
-        self.new = None
+        self.new = []
+        self.fail_second_once = False
 
     def get_project(self):
         return {"id": gate.PROJECT_ID, "status": "approved",
@@ -40,28 +41,33 @@ class FakeClient:
                 {"type": "telemetry", "consent": "opt_in", "data_collected": ["Discord webhook data"]}]
 
     def list_versions(self):
-        return [copy.deepcopy(self.prior)] + ([copy.deepcopy(self.new)] if self.new else [])
+        return [copy.deepcopy(self.prior)] + copy.deepcopy(self.new)
 
     def get_version(self, version_id):
         if version_id == gate.PRIOR_VERSION_ID:
             return copy.deepcopy(self.prior)
-        if self.new and version_id == self.new["id"]:
-            return copy.deepcopy(self.new)
+        for version in self.new:
+            if version_id == version["id"]:
+                return copy.deepcopy(version)
         raise AssertionError("Unknown fake version")
 
     def create_version(self, payload, jar):
+        if self.fail_second_once and len(self.new) == 1:
+            self.fail_second_once = False
+            raise RuntimeError("Simulated second-version upload interruption")
         self.created += 1
         assert jar == self.jar
-        self.new = {
+        value = {
             **{key: payload[key] for key in ("project_id", "name", "version_number",
                                           "changelog", "game_versions", "loaders",
                                           "version_type", "status", "environment")},
-            "id": "BBTest11", "files": [{"primary": True, "hashes": {
+            "id": "BBTest" + str(11 + len(self.new)), "files": [{"primary": True, "hashes": {
                 "sha512": gate.CANDIDATE_SHA512,
                 "sha1": hashlib.sha1(jar.read_bytes()).hexdigest(),
             }}],
         }
-        return self.new["id"]
+        self.new.append(value)
+        return value["id"]
 
 
 class ReleaseGateTests(unittest.TestCase):
@@ -98,6 +104,16 @@ class ReleaseGateTests(unittest.TestCase):
             self._write_target(index, target)
         self._write_client()
         self._write_web()
+        shutil.copyfile(gate.HERE / "purpur-matrix.json",
+                        self.base / "purpur-matrix.json")
+        self.purpur_pins = json.loads((self.base / "purpur-matrix.json").read_text(
+            encoding="utf-8"))["versions"]
+        self.purpur_folder = self.base / "runs/20261001T230000Z-purpur"
+        for index, pin in enumerate(self.purpur_pins):
+            for mode in ("online", "offline"):
+                self._write_purpur_target(index, pin, mode)
+        self._write_purpur_clients()
+        self._write_purpur_web()
         shutil.copyfile(gate.HERE / "release-changelog.md",
                         self.base / "release-changelog.md")
         write_json(self.base / "runs/ai-review.json", {
@@ -163,7 +179,7 @@ class ReleaseGateTests(unittest.TestCase):
             })
 
     def _write_web(self):
-        write_json(self.base / "runs/20261001T220200Z-admin-web/result.json", {
+        write_json(self.base / "runs/20261001T220200Z-local-admin-web/result.json", {
             "source_revision": self.source, "candidate_sha512": self.candidate_sha,
             "status": "pass", "server_stopped": True,
             "config_restored_disabled": True, "plugin_initialized": True,
@@ -174,13 +190,102 @@ class ReleaseGateTests(unittest.TestCase):
             "checks": sorted(gate.EXPECTED_WEB_CHECKS),
         })
 
-    def test_complete_exact_evidence_can_form_paper_only_plan(self):
+    def _write_purpur_target(self, index, pin, mode):
+        version = pin["version"]
+        target_id = f"purpur-{version}-{mode}-synthetic"
+        probe = {"probe_revision": "1", "minecraft": version,
+                 "server": "Purpur " + version, "java": str(pin["java"]) + ".0.1",
+                 "bytebans_version": "1.1.0", "passed": True,
+                 "cases": {case: True for case in gate.summarize.REQUIRED_CASES}}
+        row = {"loader": "purpur", "minecraft": version,
+               "purpur_build": pin["build"], "publisher_md5": pin["md5"],
+               "publisher_build_url": pin["publisher_build_url"],
+               "purpur_sha256_expected": pin["sha256"],
+               "purpur_sha256_actual": pin["sha256"],
+               "source_revision": self.source,
+               "candidate_sha512": self.candidate_sha,
+               "candidate_sha512_actual": self.candidate_sha,
+               "probe_sha512": self.helper_sha,
+               "probe_sha512_actual": self.helper_sha,
+               "java": pin["java"],
+               "connection_mode": "standalone_" + mode,
+               "instance_id": f"mw-{index:016x}", "port": 27244,
+               "execution_host": "local-windows-loopback",
+               "started_at": "2026-10-01T23:00:00+00:00",
+               "finished_at": "2026-10-01T23:05:00+00:00",
+               "status": "pass", "stopped": True, "probe": probe,
+               "startup_diagnostics": {"initialized": True, "fatal_lines": []},
+               "probe_diagnostics": {"minecraft_matches": True,
+                                     "java_matches": True,
+                                     "server_mentions_version": True,
+                                     "all_required_cases_pass": True},
+               "logs": "[ByteBans] ByteBans was successfully initialized.\n"}
+        write_json(self.purpur_folder / (target_id + ".json"), row)
+
+    def _write_purpur_clients(self):
+        checks = {"real_offline_join": True, "ip_unban_restores_join": True,
+                  "ip_ban_kicks_existing_client": {"event": "kicked"},
+                  "ip_ban_rejects_shared_address": {"event": "kicked"},
+                  "ip_mute_blocks_shared_address_chat": {"event": "message"},
+                  "freeze_holds_real_client": {
+                      "server_horizontal_blocks": 0.0,
+                      "server_before": {"freeze_id": 42, "bypass": False}},
+                  "unfreeze_restores_real_movement": {
+                      "server_horizontal_blocks": 2.0,
+                      "server_before": {"bypass": False}}}
+        by_version = {pin["version"]: pin for pin in self.purpur_pins}
+        for index, version in enumerate(gate.purpur_release_evidence.CLIENT_VERSIONS):
+            pin = by_version[version]
+            write_json(self.base / f"runs/20261001T23010{index}Z-local-purpur-client-{version}/result.json", {
+                "source_revision": self.source,
+                "candidate_sha512": self.candidate_sha,
+                "probe_sha512": self.helper_sha,
+                "client_sha256": gate.CLIENT_SCRIPT_SHA256,
+                "loader": "purpur", "version": version,
+                "status": "pass", "stopped": True,
+                "port": 27242, "instance_id": "mw-1111111111111111",
+                "purpur_build": pin["build"],
+                "purpur_sha256_expected": pin["sha256"],
+                "purpur_sha256_actual": pin["sha256"],
+                "java": pin["java"], "connection_mode": "standalone_offline",
+                "finished_at": "2026-10-01T23:05:00+00:00", "checks": checks,
+            })
+
+    def _write_purpur_web(self):
+        pin = next(item for item in self.purpur_pins if item["version"] == "26.2")
+        write_json(self.base / "runs/20261001T230200Z-local-purpur-admin-web/result.json", {
+            "source_revision": self.source, "candidate_sha512": self.candidate_sha,
+            "candidate_sha512_actual": self.candidate_sha,
+            "status": "pass", "server_stopped": True,
+            "config_restored_disabled": True, "plugin_initialized": True,
+            "panel_bound_loopback": True, "instance_id": "mw-1111111111111111",
+            "loader": "purpur", "version": "26.2",
+            "purpur_build": pin["build"],
+            "publisher_md5": pin["md5"],
+            "purpur_sha256_expected": pin["sha256"],
+            "purpur_sha256_actual": pin["sha256"],
+            "java": pin["java"],
+            "execution_host": "local-windows-loopback", "port": 27246,
+            "panel_port": 27247,
+            "script_sha256": gate.purpur_release_evidence.ADMIN_SCRIPT_SHA256,
+            "recorded_at": "2026-10-01T23:06:00+00:00",
+            "checks": sorted(gate.EXPECTED_WEB_CHECKS),
+        })
+
+    def test_complete_exact_evidence_forms_two_non_overclaiming_payloads(self):
         plan = gate.audit(base=self.base)
         self.assertTrue(plan["ready"], plan["issues"])
         self.assertEqual(15, len(plan["qualified_versions"]))
-        self.assertEqual(["paper"], plan["payload"]["loaders"])
-        self.assertEqual("listed", plan["payload"]["status"])
+        self.assertEqual(14, len(plan["purpur_qualified_versions"]))
+        shared, exception = plan["payloads"]
+        self.assertEqual(["paper", "purpur"], shared["loaders"])
+        self.assertEqual(plan["purpur_qualified_versions"], shared["game_versions"])
+        self.assertEqual(["paper"], exception["loaders"])
+        self.assertEqual(["26.1.1"], exception["game_versions"])
+        self.assertNotEqual(shared["version_number"], exception["version_number"])
+        self.assertEqual("listed", shared["status"])
         self.assertEqual(30, len([key for key in plan["receipts"] if key.startswith("paper-")]))
+        self.assertEqual(28, len([key for key in plan["receipts"] if key.startswith("purpur-")]))
         self.assertEqual(3, len([key for key in plan["receipts"]
                                  if key.startswith("real_offline_client_")]))
 
@@ -206,7 +311,7 @@ class ReleaseGateTests(unittest.TestCase):
         (self.base / "runs/ai-review.json").unlink()
         plan = gate.audit(base=self.base)
         self.assertTrue(plan["ready"], plan["issues"])
-        self.assertEqual("unlisted", plan["payload"]["status"])
+        self.assertTrue(all(payload["status"] == "unlisted" for payload in plan["payloads"]))
         self.assertIsNone(plan["ai_review_sha256"])
         client = FakeClient(self.jar)
         receipt = gate.publish(base=self.base, client=client, user_requested_upload=True)
@@ -237,7 +342,7 @@ class ReleaseGateTests(unittest.TestCase):
         write_json(path, review)
         plan = gate.audit(base=self.base)
         self.assertTrue(plan["ready"], plan["issues"])
-        self.assertEqual("unlisted", plan["payload"]["status"])
+        self.assertTrue(all(payload["status"] == "unlisted" for payload in plan["payloads"]))
         client = FakeClient(self.jar)
         receipt = gate.publish(base=self.base, client=client, user_requested_upload=True)
         self.assertEqual("unlisted", receipt["status"])
@@ -252,7 +357,7 @@ class ReleaseGateTests(unittest.TestCase):
         write_json(path, review)
         plan = gate.audit(base=self.base)
         self.assertFalse(plan["ready"])
-        self.assertIsNone(plan["payload"])
+        self.assertEqual([], plan["payloads"])
 
     def test_latest_failed_retry_supersedes_earlier_pass(self):
         target = self.targets[0]
@@ -264,6 +369,41 @@ class ReleaseGateTests(unittest.TestCase):
         plan = gate.audit(base=self.base)
         self.assertFalse(plan["ready"])
         self.assertIn(target["id"], plan["target_issues"])
+
+    def test_purpur_missing_changed_pin_and_latest_failure_block_release(self):
+        target_id = "purpur-26.3-offline-synthetic"
+        path = self.purpur_folder / (target_id + ".json")
+        row = json.loads(path.read_text(encoding="utf-8"))
+        path.unlink()
+        plan = gate.audit(base=self.base)
+        self.assertFalse(plan["ready"])
+        self.assertIn(target_id, plan["target_issues"])
+        write_json(path, row)
+        row["finished_at"] = "2026-10-01T23:06:00+00:00"
+        row["purpur_sha256_actual"] = "0" * 64
+        write_json(self.base / "runs/20261001T230600Z-purpur" / path.name, row)
+        plan = gate.audit(base=self.base)
+        self.assertFalse(plan["ready"])
+        self.assertIn(target_id, plan["target_issues"])
+        self.assertEqual([], plan["payloads"])
+
+    def test_purpur_real_client_or_admin_failure_blocks_release(self):
+        client_path = (self.base
+                       / "runs/20261001T230100Z-local-purpur-client-1.21/result.json")
+        row = json.loads(client_path.read_text(encoding="utf-8"))
+        row["checks"]["freeze_holds_real_client"]["server_horizontal_blocks"] = 1.0
+        write_json(client_path, row)
+        plan = gate.audit(base=self.base)
+        self.assertFalse(plan["ready"])
+        self.assertTrue(any("Purpur 1.21" in issue for issue in plan["issues"]))
+        self._write_purpur_clients()
+        web_path = self.base / "runs/20261001T230200Z-local-purpur-admin-web/result.json"
+        web = json.loads(web_path.read_text(encoding="utf-8"))
+        web["panel_bound_loopback"] = False
+        write_json(web_path, web)
+        plan = gate.audit(base=self.base)
+        self.assertFalse(plan["ready"])
+        self.assertTrue(any("Purpur admin web" in issue for issue in plan["issues"]))
 
     def test_dry_run_never_constructs_upload_client(self):
         with patch.object(gate, "HERE", self.base), patch.object(
@@ -277,12 +417,57 @@ class ReleaseGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "user's later upload instruction"):
             gate.publish(base=self.base, client=client)
         first = gate.publish(base=self.base, client=client, user_requested_upload=True)
-        self.assertEqual("created", first["action"])
-        self.assertEqual(1, client.created)
+        self.assertEqual(["created", "created"], [v["action"] for v in first["versions"]])
+        self.assertEqual(2, client.created)
         self.assertEqual(prior, client.prior)
         second = gate.publish(base=self.base, client=client, user_requested_upload=True)
         self.assertEqual(first, second)
+        self.assertEqual(2, client.created)
+
+    def test_interrupted_second_upload_resumes_without_duplicate_first(self):
+        client = FakeClient(self.jar)
+        client.fail_second_once = True
+        with self.assertRaisesRegex(RuntimeError, "second-version upload interruption"):
+            gate.publish(base=self.base, client=client, user_requested_upload=True)
         self.assertEqual(1, client.created)
+        self.assertEqual(1, len(client.new))
+        self.assertFalse((self.base / "runs/publication.json").exists())
+        receipt = gate.publish(base=self.base, client=client, user_requested_upload=True)
+        self.assertEqual(2, client.created)
+        self.assertEqual(["verified_existing", "created"],
+                         [v["action"] for v in receipt["versions"]])
+        self.assertEqual(2, len({v["version_id"] for v in receipt["versions"]}))
+
+    def test_existing_paper_exception_cannot_gain_purpur_loader(self):
+        client = FakeClient(self.jar)
+        for payload in gate.audit(base=self.base)["payloads"]:
+            client.create_version(payload, self.jar)
+        client.created = 0
+        client.new[1]["loaders"] = ["paper", "purpur"]
+        with self.assertRaisesRegex(ValueError, "different metadata"):
+            gate.publish(base=self.base, client=client, user_requested_upload=True)
+        self.assertEqual(0, client.created)
+
+    def test_unexpected_third_version_with_same_hash_blocks_upload(self):
+        client = FakeClient(self.jar)
+        payload = dict(gate.audit(base=self.base)["payloads"][0])
+        payload["version_number"] = "1.1.0-unexpected"
+        client.create_version(payload, self.jar)
+        client.created = 0
+        with self.assertRaisesRegex(ValueError, "Unexpected or duplicate"):
+            gate.publish(base=self.base, client=client, user_requested_upload=True)
+        self.assertEqual(0, client.created)
+
+    def test_changed_local_publication_receipt_blocks_retry(self):
+        client = FakeClient(self.jar)
+        gate.publish(base=self.base, client=client, user_requested_upload=True)
+        path = self.base / "runs/publication.json"
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        receipt["versions"][1]["loaders"] = ["paper", "purpur"]
+        write_json(path, receipt)
+        with self.assertRaisesRegex(ValueError, "local ByteBans publication receipt conflicts"):
+            gate.publish(base=self.base, client=client, user_requested_upload=True)
+        self.assertEqual(2, client.created)
 
     def test_missing_remote_disclosures_or_outdated_page_never_uploads(self):
         client = FakeClient(self.jar)
@@ -298,10 +483,10 @@ class ReleaseGateTests(unittest.TestCase):
 
     def test_conflicting_existing_version_never_uploads(self):
         client = FakeClient(self.jar)
-        payload = gate.audit(base=self.base)["payload"]
+        payload = gate.audit(base=self.base)["payloads"][0]
         client.create_version(payload, self.jar)
         client.created = 0
-        client.new["loaders"] = ["paper", "spigot"]
+        client.new[0]["loaders"] = ["paper", "spigot"]
         with self.assertRaisesRegex(ValueError, "different metadata"):
             gate.publish(base=self.base, client=client, user_requested_upload=True)
         self.assertEqual(0, client.created)

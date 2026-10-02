@@ -26,6 +26,25 @@ Real offline-mode Minecraft TCP clients separately passed all seven login/enforc
 
 The optional admin page also passed seven HTTP/SQLite checks against this JAR on Paper 1.21.4: loopback sign-in page, rejected foreign Host, rejected wrong token, accepted correct token, rejected CSRF without a database write, note creation with an audit actor, and note undo with an audit entry. `runs/20261002T001650Z-local-admin-web/result.json` has SHA-256 `a082215d8c0acdfdf297888040cdfd7aea0e7b52a5616f4af927915304b5b3fd`. The test panel bound to `127.0.0.1:27247`; the server stopped and its configuration was restored to disabled. POSIX `0600` token-file permissions were not rechecked on Windows; they passed on the older snapshot's Linux test, which is separate historical evidence.
 
-Purpur boundary checks passed **4/4** on this exact JAR: pinned 1.21 build 2284 and 1.21.11 build 2568, each in standalone online and offline mode. The receipts are in `runs/20261002T001802Z-purpur/`. They do not establish support for every Purpur version, and no direct Bukkit or Spigot build was tested. The proposed 1.1.0 compatibility metadata therefore lists **Paper only** and exactly the fifteen Paper versions above.
+All **28/28 pinned Purpur targets passed** with the same frozen JAR: fourteen versions in standalone online and offline mode. Each used 4 GB, four CPU cores, local port 27244 and its pinned Java runtime; every server stopped and its world remains under `testing/bytebans/live/`. The exact Purpur builds and hashes are in `purpur-matrix.json` (SHA-256 `71dd968ef6f61067032453d711f8cf1b86e732b8d1ffccb87238bbf28c402bc9`). Receipts are in `runs/20261002T001802Z-purpur/` and `runs/20261002T024637Z-purpur/`.
 
-`python private-probe/release_gate.py --dry-run` now recognizes all fifteen Paper versions and the required new-hash client and web checks. Its remaining blocker is the owner's truthful AI eligibility, visibility and Modrinth disclosure review. No ByteBans 1.1.0 upload has been made; the existing public 1.0.0 version is unchanged. Previous `1.1.0-SNAPSHOT` results remain in [RESULTS-SNAPSHOT.md](RESULTS-SNAPSHOT.md) and the ignored `runs/` history and do not qualify this JAR.
+| Minecraft | Purpur build | Java | Online server | Offline server |
+| --- | ---: | ---: | --- | --- |
+| 1.21 | 2284 | 21 | pass | pass |
+| 1.21.1 | 2329 | 21 | pass | pass |
+| 1.21.3 | 2358 | 21 | pass | pass |
+| 1.21.4 | 2416 | 21 | pass | pass |
+| 1.21.5 | 2450 | 21 | pass | pass |
+| 1.21.6 | 2465 | 21 | pass | pass |
+| 1.21.7 | 2477 | 21 | pass | pass |
+| 1.21.8 | 2497 | 21 | pass | pass |
+| 1.21.9 | 2505 | 21 | pass | pass |
+| 1.21.10 | 2535 | 21 | pass | pass |
+| 1.21.11 | 2568 | 21 | pass | pass |
+| 26.1.2 | 2592 | 25 | pass | pass |
+| 26.2 | 2633 | 25 | pass | pass |
+| 26.3 | 2642 | 25 | pass | pass |
+
+Real offline-mode Minecraft TCP clients separately passed login, IP ban, IP mute, freeze and unfreeze on Purpur 1.21 and 1.21.11. Their receipts are `runs/20261002T031322Z-local-purpur-client-1.21/result.json` and `runs/20261002T031500Z-local-purpur-client-1.21.11/result.json`. An earlier 1.21 attempt is retained at `runs/20261002T031007Z-local-purpur-client-1.21/`: its post-login test teleport triggered Purpur's anti-flying kick before the mute check. Moving the marked flat area to world spawn before the client joined resolved that fixture issue; no ByteBans production code or JAR changed. Purpur 26.2 also passed seven authenticated admin-page HTTP/SQLite checks (`runs/20261002T031652Z-local-purpur-admin-web/result.json`). No Microsoft-authenticated online-mode client session was available, so the synthetic online-mode runs do not prove real-account login. No direct Bukkit or Spigot build was tested.
+
+The proposed Modrinth metadata uses two entries pointing to the **same exact JAR**, because loaders and Minecraft versions form a Cartesian product there: one entry for the fourteen shared Paper/Purpur versions, and one Paper-only entry for 26.1.1. The official Purpur catalog returns no 26.1.1 build. `python private-probe/release_gate.py --dry-run` verifies all 58 live-server receipts plus the five real-client and two admin boundary runs and is ready for **unlisted** publication. Public listing still requires a truthful human eligibility review; project-page and disclosure checks run immediately before any upload. No ByteBans 1.1.0 upload has been made; the existing public 1.0.0 version is unchanged. Previous `1.1.0-SNAPSHOT` results remain in [RESULTS-SNAPSHOT.md](RESULTS-SNAPSHOT.md) and the ignored `runs/` history and do not qualify this JAR.

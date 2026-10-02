@@ -20,7 +20,11 @@ import run_matrix
 WORKSPACE = Path(__file__).resolve().parents[3]
 CACHE = WORKSPACE / "testing/bytebans/cache"
 PINS = WORKSPACE / "testing/bytebans/purpur-pins.json"
-VERSIONS = ("1.21", "1.21.11")
+VERSIONS = (
+    "1.21", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6",
+    "1.21.7", "1.21.8", "1.21.9", "1.21.10", "1.21.11",
+    "26.1.2", "26.2", "26.3",
+)
 
 
 def official_json(url: str) -> dict:
@@ -81,7 +85,8 @@ def jar_for(entry: dict) -> Path:
 def run(entry: dict, mode: str, folder: Path) -> dict:
     version = entry["version"]
     jar = jar_for(entry)
-    target = {"version": version, "java": 21}
+    java = 25 if version.startswith("26.") else 21
+    target = {"version": version, "java": java}
     identity = "mw-" + secrets.token_hex(8)
     instance = INSTANCES / identity
     instance.mkdir(parents=True)
@@ -108,7 +113,7 @@ def run(entry: dict, mode: str, folder: Path) -> dict:
                "candidate_sha512_actual": sha(plugins / "000-300a632568e3.jar", "sha512"),
                "probe_sha512": sha(HELPER, "sha512"),
                "probe_sha512_actual": sha(plugins / "001-d6029de86b40.jar", "sha512"),
-               "java": 21, "java_executable": str(JAVA[21]),
+               "java": java, "java_executable": str(JAVA[java]),
                "connection_mode": "standalone_" + mode,
                "instance_id": identity, "instance_path": str(instance),
                "execution_host": "local-windows-loopback", "port": 27244,
@@ -118,7 +123,7 @@ def run(entry: dict, mode: str, folder: Path) -> dict:
     try:
         with log_path.open("w", encoding="utf-8", errors="replace") as log:
             process = subprocess.Popen(
-                [str(JAVA[21]), "-Xms1G", "-Xmx4G", "-XX:ActiveProcessorCount=4",
+                [str(JAVA[java]), "-Xms1G", "-Xmx4G", "-XX:ActiveProcessorCount=4",
                  "-jar", jar.name, "nogui"],
                 cwd=instance, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace",

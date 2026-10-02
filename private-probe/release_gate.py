@@ -16,6 +16,7 @@ import re
 import sys
 
 import summarize
+import purpur_release_evidence
 
 
 HERE = Path(__file__).resolve().parent
@@ -33,6 +34,8 @@ PRIOR_GAME_VERSIONS = (
 PRIOR_LOADERS = ("bukkit", "paper", "purpur", "spigot")
 VERSION_NUMBER = "1.1.0"
 VERSION_NAME = "ByteBans 1.1.0 beta"
+PAPER_EXCEPTION_NUMBER = "1.1.0+paper.26.1.1"
+PAPER_EXCEPTION_NAME = "ByteBans 1.1.0 beta (Paper 26.1.1)"
 SOURCE_REVISION = "70d3daff4b0af93338d95b207ee596c5e52a43fc"
 CANDIDATE_SHA512 = (
     "300a632568e37a22bd8d16ef311625f8bc53db9ce87bab4f2571400952b061df5da3e9aabb56142e62360874c0c2d15696b8afb755054608f8e373106eac15a8"
@@ -303,13 +306,24 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
             _, path, row = client
             receipt_paths["real_offline_client_" + version] = str(path)
             issues.extend(f"Paper {version}: {problem}" for problem in _client_issues(row, target))
-    web = _latest_receipt(runs, "*-admin-web/result.json", CANDIDATE_SHA512)
+    web = _latest_receipt(runs, "*-local-admin-web/result.json", CANDIDATE_SHA512)
     if web is None:
         issues.append("Authenticated admin web HTTP/SQLite receipt is missing")
     else:
         _, path, row = web
         receipt_paths["admin_web"] = str(path)
         issues.extend(_web_issues(row))
+
+    purpur = purpur_release_evidence.audit(
+        base, CANDIDATE_SHA512, PROBE_SHA512,
+        SOURCE_REVISION, CLIENT_SCRIPT_SHA256,
+    )
+    issues.extend(purpur["issues"])
+    target_issues.update(purpur["target_issues"])
+    receipt_paths.update(purpur["receipts"])
+    purpur_versions = purpur["qualified_versions"]
+    if set(purpur_versions) != set(qualified_versions) - {"26.1.1"}:
+        issues.append("Paper/Purpur overlap is not the exact 14-version shared set")
 
     ai_review_sha256 = None
     reviewed_status = "unlisted"
@@ -330,17 +344,24 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
     if not changelog_path.is_symlink() and changelog_path.is_file():
         changelog = changelog_path.read_text(encoding="utf-8").strip()
     if (len(changelog) < 80 or "AI-generated" not in changelog
-            or "Paper" not in changelog):
+            or "Paper" not in changelog or "Purpur" not in changelog
+            or "26.1.1" not in changelog):
         issues.append("Release changelog is missing or lacks compatibility and AI provenance disclosure")
 
-    payload = None
-    if len(qualified_versions) == 15 and changelog and reviewed_status:
-        payload = {"project_id": PROJECT_ID, "name": VERSION_NAME,
-                   "version_number": VERSION_NUMBER, "changelog": changelog,
-                   "game_versions": qualified_versions, "loaders": ["paper"],
-                   "version_type": "beta", "featured": False,
-                   "status": reviewed_status, "environment": "dedicated_server_only",
-                   "dependencies": [], "file_parts": ["primary"], "primary_file": "primary"}
+    payloads = []
+    if (len(qualified_versions) == 15 and len(purpur_versions) == 14
+            and not issues and changelog and reviewed_status):
+        common = {"project_id": PROJECT_ID, "changelog": changelog,
+                  "version_type": "beta", "featured": False,
+                  "status": reviewed_status, "environment": "dedicated_server_only",
+                  "dependencies": [], "file_parts": ["primary"], "primary_file": "primary"}
+        payloads = [
+            {**common, "name": VERSION_NAME, "version_number": VERSION_NUMBER,
+             "game_versions": purpur_versions, "loaders": ["paper", "purpur"]},
+            {**common, "name": PAPER_EXCEPTION_NAME,
+             "version_number": PAPER_EXCEPTION_NUMBER,
+             "game_versions": ["26.1.1"], "loaders": ["paper"]},
+        ]
     evidence_hashes = {}
     for name, name_path in receipt_paths.items():
         path = Path(name_path)
@@ -348,15 +369,17 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
             issues.append("Release evidence disappeared or became a symbolic link: " + name)
         else:
             evidence_hashes[name] = digest(path, "sha256")
-    return {"ready": not issues and payload is not None, "issues": issues,
+    return {"ready": not issues and len(payloads) == 2, "issues": issues,
             "target_issues": target_issues, "qualified_versions": qualified_versions,
+            "purpur_qualified_versions": purpur_versions,
             "planned_versions": versions, "candidate_file": str(candidate),
             "candidate_sha512": CANDIDATE_SHA512, "source_revision": SOURCE_REVISION,
             "probe_sha512": PROBE_SHA512, "matrix_sha256": MATRIX_SHA256,
+            "purpur_matrix_sha256": purpur["matrix_sha256"],
             "ai_review_sha256": ai_review_sha256,
             "changelog_sha256": hashlib.sha256(changelog.encode("utf-8")).hexdigest() if changelog else None,
             "receipts": receipt_paths, "evidence_sha256": evidence_hashes,
-            "payload": payload}
+            "payloads": payloads}
 
 
 class ModrinthClient:
@@ -448,15 +471,16 @@ def _verify_new_version(version: dict, payload: dict, jar: Path) -> bool:
     return bool(
         isinstance(version.get("id"), str) and VERSION_ID.fullmatch(version["id"])
         and version.get("project_id") == PROJECT_ID
-        and version.get("version_number") == VERSION_NUMBER
-        and version.get("name") == VERSION_NAME
-        and version.get("version_type") == "beta"
+        and version.get("version_number") == payload["version_number"]
+        and version.get("name") == payload["name"]
+        and version.get("version_type") == payload["version_type"]
         and version.get("status") == payload["status"]
-        and version.get("environment") == "dedicated_server_only"
+        and version.get("environment") == payload["environment"]
         and version.get("changelog") == payload["changelog"]
         and isinstance(versions, list) and len(versions) == len(payload["game_versions"])
         and set(versions) == set(payload["game_versions"])
-        and isinstance(loaders, list) and loaders == ["paper"]
+        and isinstance(loaders, list) and len(loaders) == len(payload["loaders"])
+        and set(loaders) == set(payload["loaders"])
         and isinstance(hashes, dict)
         and hashes.get("sha512") == CANDIDATE_SHA512
         and hashes.get("sha1") == digest(jar, "sha1")
@@ -475,7 +499,7 @@ def _atomic_json(path: Path, value: dict):
 def publish(*, user_requested_upload=False, base: Path | None = None,
             ai_review_path: Path | None = None, changelog_path: Path | None = None,
             client=None) -> dict:
-    """Create or verify one new version only after explicit authorization and full evidence."""
+    """Create or verify two disjoint metadata rectangles for one frozen JAR."""
     if not user_requested_upload:
         raise ValueError("ByteBans publication requires the user's later upload instruction")
     base = Path(base or HERE)
@@ -519,47 +543,91 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
     if not isinstance(existing, list) or not any(v.get("id") == PRIOR_VERSION_ID for v in existing):
         raise ValueError("Existing ByteBans 1.0.0 release is missing")
     prior_before = _prior_signature(client.get_version(PRIOR_VERSION_ID))
-    payload = plan["payload"]
-    matching_version = None
+    payloads = plan["payloads"]
+    expected = {payload["version_number"]: payload for payload in payloads}
+    if len(expected) != 2:
+        raise ValueError("ByteBans split version numbers are not unique")
+    matching: dict[str, dict] = {}
     for version in existing:
-        if version.get("version_number") == VERSION_NUMBER or any(
+        number = version.get("version_number")
+        same_artifact = any(
                 isinstance(item, dict)
                 and (item.get("hashes") or {}).get("sha512") == CANDIDATE_SHA512
-                for item in version.get("files") or []):
-            if matching_version is not None:
-                raise ValueError("Multiple ByteBans versions conflict with the frozen candidate")
-            matching_version = version
-    if matching_version is not None:
-        matching_version = client.get_version(matching_version["id"])
-        if not _verify_new_version(matching_version, payload, jar):
+                for item in version.get("files") or [])
+        if number not in expected and not same_artifact:
+            continue
+        if number not in expected or number in matching:
+            raise ValueError("Unexpected or duplicate ByteBans version conflicts with the frozen candidate")
+        full = client.get_version(version["id"])
+        if not _verify_new_version(full, expected[number], jar):
             raise ValueError("A ByteBans version or artifact already exists with different metadata")
+        matching[number] = full
     receipt_path = Path(base) / "runs/publication.json"
     if receipt_path.is_symlink() or receipt_path.parent.is_symlink():
         raise ValueError("Publication receipt path cannot be a symbolic link")
     previous = None
     if receipt_path.exists():
         previous = safe_json(receipt_path)
-        if (matching_version is None
-                or previous.get("version_id") != matching_version.get("id")
+        prior_versions = previous.get("versions")
+        if (not isinstance(prior_versions, list) or len(prior_versions) != 2
+                or any(not isinstance(item, dict)
+                       or not isinstance(item.get("version_number"), str)
+                       for item in prior_versions)
+                or {item["version_number"] for item in prior_versions} != set(expected)
+                or set(matching) != set(expected)
+                or any(item.get("version_id") != matching.get(item["version_number"], {}).get("id")
+                       or item.get("name") != expected[item["version_number"]]["name"]
+                       or item.get("loaders") != expected.get(item.get("version_number"), {}).get("loaders")
+                       or item.get("game_versions") != expected.get(item.get("version_number"), {}).get("game_versions")
+                       or item.get("primary_sha512") != CANDIDATE_SHA512
+                       for item in prior_versions)
                 or previous.get("candidate_sha512") != CANDIDATE_SHA512
+                or previous.get("probe_sha512") != PROBE_SHA512
                 or previous.get("project_id") != PROJECT_ID
                 or previous.get("source_revision") != SOURCE_REVISION
                 or previous.get("matrix_sha256") != MATRIX_SHA256
+                or previous.get("purpur_matrix_sha256") != purpur_release_evidence.MATRIX_SHA256
                 or previous.get("changelog_sha256") != plan["changelog_sha256"]
                 or previous.get("ai_review_sha256") != plan["ai_review_sha256"]
-                or previous.get("status") != payload["status"]
-                or previous.get("game_versions") != payload["game_versions"]
-                or previous.get("loaders") != ["paper"]):
+                or previous.get("evidence_sha256") != plan["evidence_sha256"]
+                or previous.get("prior_version") != prior_before
+                or previous.get("status") != payloads[0]["status"]):
             raise ValueError("Existing local ByteBans publication receipt conflicts with Modrinth")
-    if matching_version is None:
-        version_id = client.create_version(payload, jar)
-        action = "created"
-    else:
-        version_id = matching_version["id"]
-        action = "verified_existing"
-    published = client.get_version(version_id)
-    if not _verify_new_version(published, payload, jar):
-        raise RuntimeError("ByteBans upload hash, loader, Minecraft versions or metadata verification failed")
+    published_versions = []
+    for payload in payloads:
+        number = payload["version_number"]
+        if number in matching:
+            version_id = matching[number]["id"]
+            action = "verified_existing"
+        else:
+            version_id = client.create_version(payload, jar)
+            action = "created"
+        published = client.get_version(version_id)
+        if not _verify_new_version(published, payload, jar):
+            raise RuntimeError("ByteBans upload hash, loader, Minecraft versions or metadata verification failed")
+        if _prior_signature(client.get_version(PRIOR_VERSION_ID)) != prior_before:
+            raise RuntimeError("Existing ByteBans 1.0.0 metadata changed during publication")
+        published_versions.append({"version_id": version_id,
+                                   "version_number": number, "name": payload["name"],
+                                   "loaders": payload["loaders"],
+                                   "game_versions": payload["game_versions"],
+                                   "primary_sha512": CANDIDATE_SHA512,
+                                   "action": action})
+    # A retry may discover the first version after a previous upload stopped
+    # before the second. Any third version carrying this JAR is a conflict.
+    after = client.list_versions()
+    if not isinstance(after, list):
+        raise RuntimeError("Modrinth ByteBans version list changed unexpectedly")
+    expected_ids = {item["version_id"] for item in published_versions}
+    seen_ids = set()
+    for version in after:
+        same_artifact = any(isinstance(item, dict)
+                            and (item.get("hashes") or {}).get("sha512") == CANDIDATE_SHA512
+                            for item in version.get("files") or [])
+        if version.get("version_number") in expected or same_artifact:
+            seen_ids.add(version.get("id"))
+    if seen_ids != expected_ids:
+        raise RuntimeError("Unexpected ByteBans version shares the release number or JAR hash")
     prior_after = _prior_signature(client.get_version(PRIOR_VERSION_ID))
     if prior_after != prior_before:
         raise RuntimeError("Existing ByteBans 1.0.0 metadata changed during publication")
@@ -580,15 +648,16 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
                 or digest(path, "sha256") != plan["evidence_sha256"].get(name)):
             raise RuntimeError("Release evidence changed during publication: " + name)
         receipt_hashes[name] = plan["evidence_sha256"][name]
-    receipt = {"project_id": PROJECT_ID, "version_id": version_id,
-               "version_number": VERSION_NUMBER, "source_revision": SOURCE_REVISION,
+    receipt = {"project_id": PROJECT_ID, "versions": published_versions,
+               "source_revision": SOURCE_REVISION,
                "candidate_sha512": CANDIDATE_SHA512, "probe_sha512": PROBE_SHA512,
-               "matrix_sha256": MATRIX_SHA256, "game_versions": payload["game_versions"],
-               "loaders": ["paper"], "version_type": "beta", "status": payload["status"],
+               "matrix_sha256": MATRIX_SHA256,
+               "purpur_matrix_sha256": purpur_release_evidence.MATRIX_SHA256,
+               "version_type": "beta", "status": payloads[0]["status"],
                "changelog_sha256": plan["changelog_sha256"],
                "ai_review_sha256": plan["ai_review_sha256"],
                "evidence_sha256": receipt_hashes, "prior_version": prior_after,
-               "action": action, "verified_at": datetime.now(timezone.utc).isoformat()}
+               "verified_at": datetime.now(timezone.utc).isoformat()}
     _atomic_json(receipt_path, receipt)
     return receipt
 
@@ -615,6 +684,7 @@ def main(argv=None) -> int:
     _atomic_json(output, plan)
     print("ByteBans release gate:", "READY" if plan["ready"] else "BLOCKED")
     print("Qualified Paper versions:", ", ".join(plan["qualified_versions"]) or "none")
+    print("Qualified Purpur versions:", ", ".join(plan["purpur_qualified_versions"]) or "none")
     for issue in plan["issues"]:
         print("-", issue)
     print("Full dry-run:", output)

@@ -1,0 +1,121 @@
+{
+  "revision": 1,
+  "loader": "purpur",
+  "versions": [
+    {
+      "version": "1.21",
+      "build": 2284,
+      "java": 21,
+      "md5": "adb0fe06e26f7eaefb1359b2942245be",
+      "sha256": "12885008efdc4777eba85e4ec3e35f6b916ccbbb168a4453506b4596e028abcb",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21/2284"
+    },
+    {
+      "version": "1.21.1",
+      "build": 2329,
+      "java": 21,
+      "md5": "dc0026462cac76c869335feb43388a76",
+      "sha256": "30403cf54f981f16e1403f172645e82d3e4a59ad6c9f1d8e98df99edb1f8ae4c",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21.1/2329"
+    },
+    {
+      "version": "1.21.3",
+      "build": 2358,
+      "java": 21,
+      "md5": "7212e71081f6e1560d9b09a2aa316a4f",
+      "sha256": "445acfeead6380a533b45e75f0703a2668f5a976b9d65d477a0307d7032be56e",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21.3/2358"
+    },
+    {
+      "version": "1.21.4",
+      "build": 2416,
+      "java": 21,
+      "md5": "e3832b46efa4a2a56d31bc7ce26df6f0",
+      "sha256": "5d5e7fbac52581f468768260a6ca3fa5879dcb7839ecf2bfbba342a1c639793d",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21.4/2416"
+    },
+    {
+      "version": "1.21.5",
+      "build": 2450,
+      "java": 21,
+      "md5": "93e0769dedf68e16c291dbe1d0cf177d",
+      "sha256": "2a2fd9b54d21a7bb6101afbe7c940fb286372e1a52c6dcfab209509ed558999d",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21.5/2450"
+    },
+    {
+      "version": "1.21.6",
+      "build": 2465,
+      "java": 21,
+      "md5": "41fbebfa73bb588d909d9829fcfea01a",
+      "sha256": "65d7d50c226c20ebdbfebd0eb6a48fcfa712d6cc07cb39f7943f328ec495691c",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21.6/2465"
+    },
+    {
+      "version": "1.21.7",
+      "build": 2477,
+      "java": 21,
+      "md5": "366994c6203cf00936255a2f3ddaafa4",
+      "sha256": "35ad2632e17f1d0e78496e61074b71e23d3180e6eb8f5c3fa978909b681c043e",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21.7/2477"
+    },
+    {
+      "version": "1.21.8",
+      "build": 2497,
+      "java": 21,
+      "md5": "b8b2802525f5b85f986af49ac4b095aa",
+      "sha256": "dd7b227f2555601c39cec091df678275f0a81fa7ed68ce954ec4924bb4575c46",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21.8/2497"
+    },
+    {
+      "version": "1.21.9",
+      "build": 2505,
+      "java": 21,
+      "md5": "4e7f78d84d62f99ea9613be33d6297c9",
+      "sha256": "53cd77c09870120fe74d4808ba54dd22c95b1f177d4e9db03ec1a6d0c43bafbd",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21.9/2505"
+    },
+    {
+      "version": "1.21.10",
+      "build": 2535,
+      "java": 21,
+      "md5": "d48ae0c35eee5dca1e476dd5dc2ce2ea",
+      "sha256": "4159783677b08b6395782e6150cb28646c70ed988b7948c09e01aa5a5e90f548",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21.10/2535"
+    },
+    {
+      "version": "1.21.11",
+      "build": 2568,
+      "java": 21,
+      "md5": "b8d5402ef8e38bf60cabc6eeddb3fa18",
+      "sha256": "ee199511bf0a970ee8459fe3a351703fec37293f00bc2de1c5cb746c7e4acc34",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/1.21.11/2568"
+    },
+    {
+      "version": "26.1.2",
+      "build": 2592,
+      "java": 25,
+      "md5": "0d01a9bcabd5e32b1e5e5d48901f1f17",
+      "sha256": "d88e3826a7f3ad3cb4b07be02fc732ba732bf1a1b113d96b605e9f8d1d119608",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/26.1.2/2592"
+    },
+    {
+      "version": "26.2",
+      "build": 2633,
+      "java": 25,
+      "md5": "3f3c933f2d518af98571c7461fa42278",
+      "sha256": "41f7c0535c1cec47ede48d25c8d9bd7f053d4dc44f87293e5a007314dbcfc32c",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/26.2/2633"
+    },
+    {
+      "version": "26.3",
+      "build": 2642,
+      "java": 25,
+      "md5": "aea7beaea871f58eb80aa0c20067d8b5",
+      "sha256": "cc076214fc856f55e52f7fe83e12fb4361de09677f5c89dcaf024a2a582cdb50",
+      "publisher_build_url": "https://api.purpurmc.org/v2/purpur/26.3/2642"
+    }
+  ],
+  "unavailable": [
+    "26.1.1"
+  ]
+}

@@ -2,7 +2,7 @@ I made ByteBans because I wanted punishments to work across my servers without g
 
 ## Getting started
 
-Put the JAR for your Paper version in `plugins/` and start the server. A new installation uses a local SQLite database, so you do not need to set up MySQL first. Give each server a distinct `server.name` in `plugins/ByteBans/config.yml`. If you want to share punishments across servers, point them at the same MySQL database. Back up an existing database before upgrading.
+Put the JAR for a supported Paper or Purpur version in `plugins/` and start the server. A new installation uses a local SQLite database, so you do not need to set up MySQL first. Give each server a distinct `server.name` in `plugins/ByteBans/config.yml`. If you want to share punishments across servers, point them at the same MySQL database. Back up an existing database before upgrading.
 
 Commands use `key:value` arguments and suggest keys, player names, scopes, and known record IDs as you type. For example:
 
@@ -21,7 +21,7 @@ Discord notifications and the local admin page are **off by default**. If you en
 
 The admin page lets staff search history and take moderation actions. It listens on `127.0.0.1` and needs its generated access token; use a local browser or an SSH tunnel. Do not publish its port directly to the internet. See the [README](https://github.com/LianJordaan/ByteBans#readme) for setup, commands, permissions, and upgrade details.
 
-The new 1.1.0 beta is listed only for the Paper versions verified on its version page. Earlier 1.0.0 files keep their existing compatibility labels.
+The new 1.1.0 beta has separate compatibility entries for the fourteen tested Paper and Purpur versions and for Paper 26.1.1, which has no Purpur build. The same tested JAR is attached to both entries. Earlier 1.0.0 files keep their existing compatibility labels; this JAR is not verified on Bukkit or Spigot.
 
 ---
 
