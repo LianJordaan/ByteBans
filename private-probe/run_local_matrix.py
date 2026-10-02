@@ -36,6 +36,7 @@ SOURCE_REVISION = "70d3daff4b0af93338d95b207ee596c5e52a43fc"
 USER_AGENT = "ModrinthWorkspace/1.0 (https://github.com/LianJordaan/ByteBans)"
 EXPECTED_CANDIDATE_SHA512 = "300a632568e37a22bd8d16ef311625f8bc53db9ce87bab4f2571400952b061df5da3e9aabb56142e62360874c0c2d15696b8afb755054608f8e373106eac15a8"
 EXPECTED_HELPER_SHA512 = "d6029de86b401b0f350802b1e38a43a025e9b2ae509fe07e9446980f8ed70687978cbfbb95e59353770cd7a984392f1b716dca0b061fd3d3725afeafb6b39a26"
+PORT = 27240
 JAVA = {
     21: Path(r"C:\Program Files\Java\jdk-21\bin\java.exe"),
     25: Path(r"C:\Users\lianj\.gradle\jdks\eclipse_adoptium-25-amd64-windows.2\bin\java.exe"),
@@ -124,7 +125,7 @@ def run(target: dict, folder: Path, download_missing: bool) -> dict:
         "instance_id": instance_id,
         "instance_path": str(instance.relative_to(WORKSPACE)),
         "execution_host": "local-windows-loopback",
-        "port": 27240,
+        "port": PORT,
         "java_executable": str(JAVA[target["java"]]),
         "status": "error",
     }
@@ -136,7 +137,7 @@ def run(target: dict, folder: Path, download_missing: bool) -> dict:
         shutil.copy2(paper, instance / paper.name)
         plugins = instance / "plugins"
         plugins.mkdir()
-        installed_candidate = plugins / "000-300a632568e3.jar"
+        installed_candidate = plugins / f"000-{candidate_sha[:12]}.jar"
         installed_helper = plugins / "001-d6029de86b40.jar"
         shutil.copy2(CANDIDATE, installed_candidate)
         shutil.copy2(HELPER, installed_helper)
@@ -145,7 +146,7 @@ def run(target: dict, folder: Path, download_missing: bool) -> dict:
         result["probe_sha512_actual"] = sha(installed_helper, "sha512")
         (instance / "eula.txt").write_text("eula=true\n", encoding="utf-8")
         (instance / "server.properties").write_text(
-            "server-ip=127.0.0.1\nserver-port=27240\n"
+            f"server-ip=127.0.0.1\nserver-port={PORT}\n"
             + "online-mode=" + ("true" if target["connection_mode"] == "standalone_online" else "false") + "\n"
             + "enforce-secure-profile=false\nwhite-list=true\n"
             + "enable-rcon=false\nspawn-protection=0\n"
@@ -214,13 +215,28 @@ def run(target: dict, folder: Path, download_missing: bool) -> dict:
 
 
 def main() -> None:
+    global CANDIDATE, EXPECTED_CANDIDATE_SHA512, PORT
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--jar", type=Path, help="Frozen, attested companion candidate")
+    parser.add_argument("--port", type=int, default=PORT, help="Loopback game port")
     parser.add_argument("--target", action="append", help="Run only this pinned target ID; repeatable")
     parser.add_argument("--remaining", action="store_true", help="Select targets without a verified passing receipt")
     parser.add_argument("--download-missing", action="store_true", help="Fetch missing pinned JARs from PaperMC")
     parser.add_argument("--download-only", action="store_true", help="Cache one verified JAR per selected Paper version")
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
+    if args.jar:
+        CANDIDATE = args.jar.resolve()
+        proof_path = HERE / "frozen/release/paper-companion-attestation.json"
+        proof = json.loads(proof_path.read_text(encoding="utf-8"))
+        if (CANDIDATE != HERE / "frozen/release/ByteBans-1.1.0-paper-26.1.1.jar"
+                or proof.get("primary_sha512") != EXPECTED_CANDIDATE_SHA512
+                or proof.get("runtime_entries_equal") is not True):
+            raise SystemExit("Only the attested Paper companion may replace the candidate")
+        EXPECTED_CANDIDATE_SHA512 = proof["companion_sha512"]
+    PORT = args.port
+    if not 27300 <= PORT <= 27319 and args.jar:
+        raise SystemExit("The Paper companion uses a separate loopback port in 27300–27319")
     if sha(CANDIDATE, "sha512") != EXPECTED_CANDIDATE_SHA512:
         raise SystemExit("Frozen ByteBans JAR SHA-512 changed")
     if sha(HELPER, "sha512") != EXPECTED_HELPER_SHA512:

@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
+import zipfile
 
 import release_gate as gate
 
@@ -21,6 +22,7 @@ def write_json(path, value):
 class FakeClient:
     def __init__(self, jar):
         self.jar = jar
+        self.companion = jar.with_name("ByteBans-1.1.0-paper-26.1.1.jar")
         self.created = 0
         self.prior = {
             "id": gate.PRIOR_VERSION_ID, "project_id": gate.PROJECT_ID,
@@ -56,13 +58,14 @@ class FakeClient:
             self.fail_second_once = False
             raise RuntimeError("Simulated second-version upload interruption")
         self.created += 1
-        assert jar == self.jar
+        assert jar == (self.companion if payload["version_number"] == gate.PAPER_EXCEPTION_NUMBER
+                       else self.jar)
         value = {
             **{key: payload[key] for key in ("project_id", "name", "version_number",
                                           "changelog", "game_versions", "loaders",
                                           "version_type", "status", "environment")},
             "id": "BBTest" + str(11 + len(self.new)), "files": [{"primary": True, "hashes": {
-                "sha512": gate.CANDIDATE_SHA512,
+                "sha512": hashlib.sha512(jar.read_bytes()).hexdigest(),
                 "sha1": hashlib.sha1(jar.read_bytes()).hexdigest(),
             }}],
         }
@@ -76,16 +79,26 @@ class ReleaseGateTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         self.jar = self.base / "frozen/release/ByteBans-1.1.0.jar"
+        self.companion = self.jar.with_name("ByteBans-1.1.0-paper-26.1.1.jar")
         self.helper = self.base / "frozen/release/bytebans-private-probe-1.0.0.jar"
         self.jar.parent.mkdir(parents=True)
         self.helper.parent.mkdir(parents=True, exist_ok=True)
-        self.jar.write_bytes(b"test-only candidate JAR bytes")
+        with zipfile.ZipFile(self.jar, "w") as archive:
+            archive.writestr("META-INF/MANIFEST.MF", b"Manifest-Version: 1.0\r\n\r\n")
+            archive.writestr("plugin.yml", b"name: ByteBans\n")
+        with zipfile.ZipFile(self.companion, "w") as archive:
+            archive.writestr("META-INF/MANIFEST.MF", gate.make_paper_companion.expected_manifest(
+                b"Manifest-Version: 1.0\r\n\r\n"))
+            archive.writestr("plugin.yml", b"name: ByteBans\n")
+        self.primary_bytes = self.jar.read_bytes()
         self.helper.write_bytes(b"test-only probe JAR bytes")
         self.candidate_sha = hashlib.sha512(self.jar.read_bytes()).hexdigest()
+        self.companion_sha = hashlib.sha512(self.companion.read_bytes()).hexdigest()
         self.helper_sha = hashlib.sha512(self.helper.read_bytes()).hexdigest()
         self.source = "a" * 40
         self.patches = [
             patch.object(gate, "CANDIDATE_SHA512", self.candidate_sha),
+            patch.object(gate, "COMPANION_SHA512", self.companion_sha),
             patch.object(gate, "PROBE_SHA512", self.helper_sha),
             patch.object(gate, "SOURCE_REVISION", self.source),
         ]
@@ -95,6 +108,15 @@ class ReleaseGateTests(unittest.TestCase):
         write_json(self.base / "frozen/release/manifest.json", {
             "source_revision": self.source, "sha512": self.candidate_sha,
         })
+        write_json(self.base / "frozen/release/paper-companion-attestation.json", {
+            "source_revision": self.source,
+            "primary_sha512": self.candidate_sha,
+            "companion_sha512": self.companion_sha,
+            "entry_count": 2,
+            "changed_entries": [gate.make_paper_companion.MANIFEST],
+            "runtime_entries_equal": True,
+            "manifest_marker": gate.make_paper_companion.MARKER.decode("ascii").strip(),
+        })
         shutil.copyfile(gate.HERE / "matrix.json", self.base / "matrix.json")
         matrix = json.loads((self.base / "matrix.json").read_text(encoding="utf-8"))
         self.targets = matrix["targets"]
@@ -102,6 +124,14 @@ class ReleaseGateTests(unittest.TestCase):
         self.matrix_folder.mkdir(parents=True)
         for index, target in enumerate(self.targets):
             self._write_target(index, target)
+        self.companion_folder = self.base / "runs/20261001T220001Z-paper-companion"
+        self.companion_folder.mkdir(parents=True)
+        for target in (item for item in self.targets if item["version"] == "26.1.1"):
+            original = json.loads((self.matrix_folder / (target["id"] + ".json")).read_text())
+            original.update({"candidate_sha512": self.companion_sha,
+                             "candidate_sha512_actual": self.companion_sha,
+                             "port": 27300})
+            write_json(self.companion_folder / (target["id"] + ".json"), original)
         self._write_client()
         self._write_web()
         shutil.copyfile(gate.HERE / "purpur-matrix.json",
@@ -283,6 +313,9 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertEqual(["paper"], exception["loaders"])
         self.assertEqual(["26.1.1"], exception["game_versions"])
         self.assertNotEqual(shared["version_number"], exception["version_number"])
+        self.assertNotEqual(plan["candidate_sha512"], plan["companion_sha512"])
+        self.assertEqual(2, len([key for key in plan["receipts"]
+                                 if key.startswith("companion-paper-")]))
         self.assertEqual("listed", shared["status"])
         self.assertEqual(30, len([key for key in plan["receipts"] if key.startswith("paper-")]))
         self.assertEqual(28, len([key for key in plan["receipts"] if key.startswith("purpur-")]))
@@ -304,10 +337,37 @@ class ReleaseGateTests(unittest.TestCase):
         plan = gate.audit(base=self.base)
         self.assertFalse(plan["ready"])
 
+    def test_companion_missing_or_failed_mode_blocks_release(self):
+        target = next(item for item in self.targets if item["version"] == "26.1.1"
+                      and item["connection_mode"] == "standalone_online")
+        path = self.companion_folder / (target["id"] + ".json")
+        original = json.loads(path.read_text(encoding="utf-8"))
+        path.unlink()
+        plan = gate.audit(base=self.base)
+        self.assertFalse(plan["ready"])
+        self.assertIn("companion-" + target["id"], plan["target_issues"])
+        write_json(path, {**original, "status": "fail"})
+        self.assertFalse(gate.audit(base=self.base)["ready"])
+
+    def test_companion_runtime_entry_change_blocks_release_even_with_matching_hash_proof(self):
+        with zipfile.ZipFile(self.companion, "w") as archive:
+            archive.writestr("META-INF/MANIFEST.MF", gate.make_paper_companion.expected_manifest(
+                b"Manifest-Version: 1.0\r\n\r\n"))
+            archive.writestr("plugin.yml", b"name: ChangedByteBans\n")
+        changed_hash = hashlib.sha512(self.companion.read_bytes()).hexdigest()
+        proof_path = self.base / "frozen/release/paper-companion-attestation.json"
+        proof = json.loads(proof_path.read_text(encoding="utf-8"))
+        proof["companion_sha512"] = changed_hash
+        write_json(proof_path, proof)
+        with patch.object(gate, "COMPANION_SHA512", changed_hash):
+            plan = gate.audit(base=self.base)
+        self.assertFalse(plan["ready"])
+        self.assertTrue(any("changes a class or resource" in issue for issue in plan["issues"]))
+
     def test_changed_candidate_fails_and_missing_human_review_defaults_unlisted(self):
         self.jar.write_bytes(b"different JAR")
         self.assertFalse(gate.audit(base=self.base)["ready"])
-        self.jar.write_bytes(b"test-only candidate JAR bytes")
+        self.jar.write_bytes(self.primary_bytes)
         (self.base / "runs/ai-review.json").unlink()
         plan = gate.audit(base=self.base)
         self.assertTrue(plan["ready"], plan["issues"])
@@ -441,7 +501,8 @@ class ReleaseGateTests(unittest.TestCase):
     def test_existing_paper_exception_cannot_gain_purpur_loader(self):
         client = FakeClient(self.jar)
         for payload in gate.audit(base=self.base)["payloads"]:
-            client.create_version(payload, self.jar)
+            artifact = self.jar if payload["version_number"] == gate.VERSION_NUMBER else self.companion
+            client.create_version(payload, artifact)
         client.created = 0
         client.new[1]["loaders"] = ["paper", "purpur"]
         with self.assertRaisesRegex(ValueError, "different metadata"):

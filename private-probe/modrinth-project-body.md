@@ -21,7 +21,7 @@ Discord notifications and the local admin page are **off by default**. If you en
 
 The admin page lets staff search history and take moderation actions. It listens on `127.0.0.1` and needs its generated access token; use a local browser or an SSH tunnel. Do not publish its port directly to the internet. See the [README](https://github.com/LianJordaan/ByteBans#readme) for setup, commands, permissions, and upgrade details.
 
-The new 1.1.0 beta has separate compatibility entries for the fourteen tested Paper and Purpur versions and for Paper 26.1.1, which has no Purpur build. The same tested JAR is attached to both entries. Earlier 1.0.0 files keep their existing compatibility labels; this JAR is not verified on Bukkit or Spigot.
+The new 1.1.0 beta has separate compatibility entries for the fourteen tested Paper and Purpur versions and for Paper 26.1.1, which has no Purpur build. The Paper-only file contains the same classes and resources as the main file; only its JAR manifest differs. Both files passed their listed live checks. Earlier 1.0.0 files keep their existing compatibility labels; this update is not verified on Bukkit or Spigot.
 
 ---
 

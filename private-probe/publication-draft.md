@@ -1,21 +1,21 @@
 # ByteBans 1.1.0 beta — publication draft, not approved
 
-This is a review copy for Modrinth project `ysEBBeJv`; it is not an upload request or an eligibility decision. The frozen release candidate is `frozen/release/ByteBans-1.1.0.jar`, SHA-512 `300a632568e37a22bd8d16ef311625f8bc53db9ce87bab4f2571400952b061df5da3e9aabb56142e62360874c0c2d15696b8afb755054608f8e373106eac15a8`, built from source revision `70d3daff4b0af93338d95b207ee596c5e52a43fc`. The existing 1.0.0 Modrinth version stays intact.
+This is a review copy for Modrinth project `ysEBBeJv`; it is not an upload request or an eligibility decision. The frozen release candidate is `frozen/release/ByteBans-1.1.0.jar`, SHA-512 `300a632568e37a22bd8d16ef311625f8bc53db9ce87bab4f2571400952b061df5da3e9aabb56142e62360874c0c2d15696b8afb755054608f8e373106eac15a8`, built from source revision `70d3daff4b0af93338d95b207ee596c5e52a43fc`. Its Paper-only companion differs only in the JAR manifest, SHA-512 `35d82ec02b5a6399868fc4ddc9c6220b8bc20f3948dae6c3c3f9b9285f0e8b1e629297e6eb6adf9c81b4a723bd59f2e45767de83e7f5e27b76c4a16bf3c8e5aa`. The existing 1.0.0 Modrinth version stays intact.
 
 | Field | Proposed value |
 | --- | --- |
-| Version name | ByteBans 1.1.0 beta |
-| Version number | 1.1.0 |
+| Version names | ByteBans 1.1.0 beta; ByteBans 1.1.0 beta (Paper 26.1.1) |
+| Version numbers | 1.1.0; 1.1.0+paper.26.1.1 |
 | Channel | beta |
 | Visibility | Listed only after an owner-confirmed substantial-human-content review; otherwise unlisted only if the owner explicitly chooses it |
-| File | exact frozen candidate JAR above, primary |
-| Loader | Paper only |
+| Files | primary candidate for the shared release; manifest-only companion for Paper 26.1.1 |
+| Loaders | Paper and Purpur for the fourteen shared versions; Paper only for 26.1.1 |
 | Environment | dedicated server only |
-| Minecraft versions | 1.21, 1.21.1, 1.21.3, 1.21.4, 1.21.5, 1.21.6, 1.21.7, 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1.1, 26.1.2, 26.2, 26.3 |
+| Minecraft versions | Shared: 1.21, 1.21.1, 1.21.3, 1.21.4, 1.21.5, 1.21.6, 1.21.7, 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1.2, 26.2, 26.3. Paper only: 26.1.1. |
 | Changelog | `release-changelog.md` |
 | Existing project license | All Rights Reserved (`LicenseRef-All-Rights-Reserved`), per the public Modrinth project API on 2026-10-02 |
 
-All 30 pinned Paper mode/version synthetic event probes passed on this exact 1.1.0 JAR. Real offline-mode Minecraft TCP clients separately passed login, IP-ban kick and shared-address rejection, unban, IP mute, freeze and unfreeze on Paper 1.21, 1.21.4 and 1.21.11. The admin web HTTP/SQLite smoke passed seven authentication, request-protection and audit checks on Paper 1.21.4. Four separate Purpur boundary synthetic probes passed at 1.21 and 1.21.11 in both modes; those do not establish compatibility for every Purpur version, so the proposed loader list remains Paper only. Bukkit and Spigot have no direct evidence. No authenticated online-mode client session was available; the online-mode server probes used synthetic Bukkit events. Paper builds for 1.21.5, 1.21.9, 26.1.1 and 26.3 were experimental. Exact receipts and limitations are in `RESULTS.md`.
+All 30 pinned Paper mode/version synthetic event probes passed on the primary 1.1.0 JAR, along with 28 Purpur probes on fourteen versions. The byte-distinct Paper 26.1.1 companion separately passed both direct server modes, and its 2,136 packaged entries were checked against the primary JAR; only the manifest marker changed. Real offline-mode Minecraft TCP clients separately passed login, IP-ban kick and shared-address rejection, unban, IP mute, freeze and unfreeze on Paper 1.21, 1.21.4 and 1.21.11 and Purpur 1.21 and 1.21.11. The admin web HTTP/SQLite smoke passed on Paper 1.21.4 and Purpur 26.2. Bukkit and Spigot have no direct evidence. No authenticated online-mode client session was available; the online-mode server probes used synthetic Bukkit events. Paper builds for 1.21.5, 1.21.9, 26.1.1 and 26.3 were experimental. Exact receipts and limitations are in `RESULTS.md`.
 
 Suggested replacement for the current outdated feature list on the project page (preserve the owner's existing hosting promotion below it unless the owner decides to change it):
 
@@ -23,7 +23,7 @@ Suggested replacement for the current outdated feature list on the project page 
 >
 > New in 1.1.0: IP bans and mutes, `/warn` and `/unwarn`, `/note`, `/history`, `/freeze` and `/unfreeze`, plus an optional local admin page. Discord webhook notifications are also optional. Both integrations are disabled by default. If you enable a webhook, moderation details can be sent to the Discord URL you configure, including IP addresses for IP punishments; notes are excluded by default. The admin page binds to `127.0.0.1` and requires its generated access token. See the GitHub README for setup and permission details.
 >
-> This release is for the Paper versions listed on the version page. It runs on Java 21 for Minecraft 1.21.x and Java 25 for Minecraft 26.x. Purpur, Bukkit and Spigot are not included in this release's compatibility metadata.
+> This release is for the Paper and Purpur versions listed on each version page. Paper 26.1.1 has its own file because Purpur has no build for that version. It runs on Java 21 for Minecraft 1.21.x and Java 25 for Minecraft 26.x. Bukkit and Spigot are not included in this release's compatibility metadata.
 
 The suggested description and release notes above are AI-written, and substantial new 1.1.0 production code was generated by an AI assistant. Select Modrinth's **AI-generated code** and **AI-generated text** content disclosures for either listed or unlisted publication. Do not describe the work as tab completion or minor assistance. No new icon or gallery image was made for this update; the public project currently has no icon.
 

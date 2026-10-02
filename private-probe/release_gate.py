@@ -1,6 +1,6 @@
 """Evidence-gated ByteBans 1.1.0 Modrinth release; dry-run by default.
 
-Only the frozen ByteBans JAR may be uploaded. This tool never edits or removes
+Only the frozen ByteBans JAR and its runtime-identical Paper companion may be uploaded. This tool never edits or removes
 the existing 1.0.0 version. Without a human public-eligibility review, the
 substantial AI-assisted update is uploaded unlisted with verified disclosures.
 """
@@ -14,9 +14,11 @@ import json
 from pathlib import Path
 import re
 import sys
+import zipfile
 
 import summarize
 import purpur_release_evidence
+import make_paper_companion
 
 
 HERE = Path(__file__).resolve().parent
@@ -39,6 +41,9 @@ PAPER_EXCEPTION_NAME = "ByteBans 1.1.0 beta (Paper 26.1.1)"
 SOURCE_REVISION = "70d3daff4b0af93338d95b207ee596c5e52a43fc"
 CANDIDATE_SHA512 = (
     "300a632568e37a22bd8d16ef311625f8bc53db9ce87bab4f2571400952b061df5da3e9aabb56142e62360874c0c2d15696b8afb755054608f8e373106eac15a8"
+)
+COMPANION_SHA512 = (
+    "35d82ec02b5a6399868fc4ddc9c6220b8bc20f3948dae6c3c3f9b9285f0e8b1e629297e6eb6adf9c81b4a723bd59f2e45767de83e7f5e27b76c4a16bf3c8e5aa"
 )
 PROBE_SHA512 = (
     "d6029de86b401b0f350802b1e38a43a025e9b2ae509fe07e9446980f8ed70687978cbfbb95e59353770cd7a984392f1b716dca0b061fd3d3725afeafb6b39a26"
@@ -78,6 +83,31 @@ def safe_json(path: Path):
     if not isinstance(value, dict):
         raise ValueError("Release evidence is not an object: " + str(path))
     return value
+
+
+def verify_companion(primary: Path, companion: Path, proof_path: Path) -> dict:
+    """Verify the two published archives contain identical runtime entries."""
+    proof = safe_json(proof_path)
+    if (companion.is_symlink() or not companion.is_file()
+            or digest(companion) != COMPANION_SHA512
+            or proof.get("source_revision") != SOURCE_REVISION
+            or proof.get("primary_sha512") != CANDIDATE_SHA512
+            or proof.get("companion_sha512") != COMPANION_SHA512
+            or proof.get("runtime_entries_equal") is not True
+            or proof.get("changed_entries") != [make_paper_companion.MANIFEST]
+            or proof.get("manifest_marker") != make_paper_companion.MARKER.decode("ascii").strip()):
+        raise ValueError("Paper companion attestation or JAR hash differs")
+    with zipfile.ZipFile(primary) as source, zipfile.ZipFile(companion) as other:
+        names = source.namelist()
+        if (names != other.namelist() or len(names) != len(set(names))
+                or names.count(make_paper_companion.MANIFEST) != 1
+                or proof.get("entry_count") != len(names)
+                or other.read(make_paper_companion.MANIFEST) !=
+                   make_paper_companion.expected_manifest(source.read(make_paper_companion.MANIFEST))
+                or any(source.read(name) != other.read(name)
+                       for name in names if name != make_paper_companion.MANIFEST)):
+            raise ValueError("Paper companion changes a class or resource")
+    return proof
 
 
 def _latest_receipt(folder: Path, pattern: str, candidate_sha: str):
@@ -186,16 +216,19 @@ def _ai_review_issues(row: dict, candidate_sha: str) -> list[str]:
     return []
 
 
-def _synthetic_issues(row: dict, target: dict) -> list[str]:
+def _synthetic_issues(row: dict, target: dict,
+                      candidate_sha: str | None = None,
+                      port_range: tuple[int, int] = (27200, 27299)) -> list[str]:
+    candidate_sha = candidate_sha or CANDIDATE_SHA512
     issues = []
-    if summarize.verified_status(row, target, CANDIDATE_SHA512, PROBE_SHA512) != "pass":
+    if summarize.verified_status(row, target, candidate_sha, PROBE_SHA512) != "pass":
         issues.append("Latest matching attempt lacks complete passing event/hash/startup evidence")
     if (row.get("source_revision") != SOURCE_REVISION
-            or row.get("candidate_sha512") != CANDIDATE_SHA512
+            or row.get("candidate_sha512") != candidate_sha
             or row.get("probe_sha512") != PROBE_SHA512
             or row.get("target") != target
             or not INSTANCE_ID.fullmatch(str(row.get("instance_id", "")))
-            or not isinstance(row.get("port"), int) or not 27200 <= row["port"] <= 27299
+            or not isinstance(row.get("port"), int) or not port_range[0] <= row["port"] <= port_range[1]
             or not row.get("started_at") or not row.get("finished_at")):
         issues.append("Attempt identity, source revision or allocated server is not pinned")
     probe = row.get("probe") or {}
@@ -213,7 +246,9 @@ def _synthetic_issues(row: dict, target: dict) -> list[str]:
     return issues
 
 
-def _matching_matrix_receipt(folder: Path, target: dict):
+def _matching_matrix_receipt(folder: Path, target: dict,
+                             candidate_sha: str | None = None):
+    candidate_sha = candidate_sha or CANDIDATE_SHA512
     matches = []
     for path in folder.glob("*/" + target["id"] + ".json"):
         try:
@@ -221,7 +256,7 @@ def _matching_matrix_receipt(folder: Path, target: dict):
         except (OSError, ValueError):
             continue
         if (row.get("target") == target
-                and row.get("candidate_sha512") == CANDIDATE_SHA512
+                and row.get("candidate_sha512") == candidate_sha
                 and row.get("probe_sha512") == PROBE_SHA512):
             matches.append((row.get("finished_at", ""), path, row))
     return max(matches, key=lambda item: item[0]) if matches else None
@@ -235,6 +270,8 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
     ai_review_path = Path(ai_review_path or runs / "ai-review.json")
     changelog_path = Path(changelog_path or base / "release-changelog.md")
     candidate = base / "frozen/release/ByteBans-1.1.0.jar"
+    companion = base / "frozen/release/ByteBans-1.1.0-paper-26.1.1.jar"
+    companion_proof = base / "frozen/release/paper-companion-attestation.json"
     helper = base / "frozen/release/bytebans-private-probe-1.0.0.jar"
     manifest_path = base / "frozen/release/manifest.json"
     matrix_path = base / "matrix.json"
@@ -255,6 +292,10 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
     if (manifest.get("sha512") != CANDIDATE_SHA512
             or manifest.get("source_revision") != SOURCE_REVISION):
         issues.append("Frozen candidate manifest does not identify this source and JAR")
+    try:
+        verify_companion(candidate, companion, companion_proof)
+    except (OSError, ValueError, zipfile.BadZipFile, KeyError) as error:
+        issues.append("Paper companion runtime attestation is invalid: " + str(error))
     try:
         matrix = safe_json(matrix_path)
         targets = matrix.get("targets")
@@ -295,6 +336,24 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
         (version, mode) in qualified_modes for mode in ("standalone_online", "standalone_offline"))]
     if len(qualified_versions) != 15:
         issues.append("Not all 15 Paper versions passed in both direct server modes")
+
+    companion_modes = set()
+    for target in (item for item in targets if item["version"] == "26.1.1"):
+        key = "companion-" + target["id"]
+        found = _matching_matrix_receipt(runs, target, COMPANION_SHA512)
+        if found is None:
+            target_issues[key] = ["No exact companion-JAR attempt"]
+            continue
+        _, path, row = found
+        receipt_paths[key] = str(path)
+        problems = _synthetic_issues(row, target, COMPANION_SHA512, (27300, 27319))
+        if problems:
+            target_issues[key] = problems
+        else:
+            companion_modes.add(target["connection_mode"])
+    if companion_modes != {"standalone_offline", "standalone_online"}:
+        issues.append("Paper 26.1.1 companion JAR lacks both exact-JAR live passes")
+    receipt_paths["paper_companion_attestation"] = str(companion_proof)
 
     for version in CLIENT_VERSIONS:
         target = next((item for item in targets if item["version"] == version
@@ -373,7 +432,9 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
             "target_issues": target_issues, "qualified_versions": qualified_versions,
             "purpur_qualified_versions": purpur_versions,
             "planned_versions": versions, "candidate_file": str(candidate),
-            "candidate_sha512": CANDIDATE_SHA512, "source_revision": SOURCE_REVISION,
+            "candidate_sha512": CANDIDATE_SHA512,
+            "companion_file": str(companion), "companion_sha512": COMPANION_SHA512,
+            "source_revision": SOURCE_REVISION,
             "probe_sha512": PROBE_SHA512, "matrix_sha256": MATRIX_SHA256,
             "purpur_matrix_sha256": purpur["matrix_sha256"],
             "ai_review_sha256": ai_review_sha256,
@@ -421,13 +482,16 @@ class ModrinthClient:
     def create_version(self, payload: dict, jar: Path) -> str:
         import requests
         content = jar.read_bytes()
-        if hashlib.sha512(content).hexdigest() != CANDIDATE_SHA512:
+        expected_hash = (CANDIDATE_SHA512 if payload["version_number"] == VERSION_NUMBER
+                         else COMPANION_SHA512 if payload["version_number"] == PAPER_EXCEPTION_NUMBER
+                         else None)
+        if expected_hash is None or hashlib.sha512(content).hexdigest() != expected_hash:
             raise ValueError("ByteBans JAR changed before Modrinth upload")
         response = requests.post(
             self.ws.API + "/version",
             headers={"Authorization": self.token, "User-Agent": self.ws.AGENT},
             files={"data": (None, json.dumps(payload), "application/json"),
-                   "primary": ("ByteBans-1.1.0.jar", content, "application/java-archive")},
+                   "primary": (jar.name, content, "application/java-archive")},
             timeout=120,
         )
         if not response.ok:
@@ -482,7 +546,7 @@ def _verify_new_version(version: dict, payload: dict, jar: Path) -> bool:
         and isinstance(loaders, list) and len(loaders) == len(payload["loaders"])
         and set(loaders) == set(payload["loaders"])
         and isinstance(hashes, dict)
-        and hashes.get("sha512") == CANDIDATE_SHA512
+        and hashes.get("sha512") == digest(jar)
         and hashes.get("sha1") == digest(jar, "sha1")
     )
 
@@ -499,7 +563,7 @@ def _atomic_json(path: Path, value: dict):
 def publish(*, user_requested_upload=False, base: Path | None = None,
             ai_review_path: Path | None = None, changelog_path: Path | None = None,
             client=None) -> dict:
-    """Create or verify two disjoint metadata rectangles for one frozen JAR."""
+    """Create or verify two disjoint metadata groups with distinct frozen JARs."""
     if not user_requested_upload:
         raise ValueError("ByteBans publication requires the user's later upload instruction")
     base = Path(base or HERE)
@@ -514,6 +578,9 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
     jar = Path(plan["candidate_file"])
     if jar.is_symlink() or digest(jar) != CANDIDATE_SHA512:
         raise ValueError("Frozen ByteBans JAR changed after release audit")
+    companion = Path(plan["companion_file"])
+    if companion.is_symlink() or digest(companion) != COMPANION_SHA512:
+        raise ValueError("Frozen Paper companion changed after release audit")
     for name, name_path in plan["receipts"].items():
         path = Path(name_path)
         if (path.is_symlink() or not path.is_file()
@@ -547,19 +614,24 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
     expected = {payload["version_number"]: payload for payload in payloads}
     if len(expected) != 2:
         raise ValueError("ByteBans split version numbers are not unique")
+    artifacts = {VERSION_NUMBER: jar, PAPER_EXCEPTION_NUMBER: companion}
+    hashes = {VERSION_NUMBER: CANDIDATE_SHA512,
+              PAPER_EXCEPTION_NUMBER: COMPANION_SHA512}
+    if len(set(hashes.values())) != 2:
+        raise ValueError("The two Modrinth versions would upload duplicate JAR bytes")
     matching: dict[str, dict] = {}
     for version in existing:
         number = version.get("version_number")
         same_artifact = any(
                 isinstance(item, dict)
-                and (item.get("hashes") or {}).get("sha512") == CANDIDATE_SHA512
+                and (item.get("hashes") or {}).get("sha512") in hashes.values()
                 for item in version.get("files") or [])
         if number not in expected and not same_artifact:
             continue
         if number not in expected or number in matching:
             raise ValueError("Unexpected or duplicate ByteBans version conflicts with the frozen candidate")
         full = client.get_version(version["id"])
-        if not _verify_new_version(full, expected[number], jar):
+        if not _verify_new_version(full, expected[number], artifacts[number]):
             raise ValueError("A ByteBans version or artifact already exists with different metadata")
         matching[number] = full
     receipt_path = Path(base) / "runs/publication.json"
@@ -579,9 +651,10 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
                        or item.get("name") != expected[item["version_number"]]["name"]
                        or item.get("loaders") != expected.get(item.get("version_number"), {}).get("loaders")
                        or item.get("game_versions") != expected.get(item.get("version_number"), {}).get("game_versions")
-                       or item.get("primary_sha512") != CANDIDATE_SHA512
+                       or item.get("primary_sha512") != hashes[item["version_number"]]
                        for item in prior_versions)
                 or previous.get("candidate_sha512") != CANDIDATE_SHA512
+                or previous.get("companion_sha512") != COMPANION_SHA512
                 or previous.get("probe_sha512") != PROBE_SHA512
                 or previous.get("project_id") != PROJECT_ID
                 or previous.get("source_revision") != SOURCE_REVISION
@@ -600,10 +673,10 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
             version_id = matching[number]["id"]
             action = "verified_existing"
         else:
-            version_id = client.create_version(payload, jar)
+            version_id = client.create_version(payload, artifacts[number])
             action = "created"
         published = client.get_version(version_id)
-        if not _verify_new_version(published, payload, jar):
+        if not _verify_new_version(published, payload, artifacts[number]):
             raise RuntimeError("ByteBans upload hash, loader, Minecraft versions or metadata verification failed")
         if _prior_signature(client.get_version(PRIOR_VERSION_ID)) != prior_before:
             raise RuntimeError("Existing ByteBans 1.0.0 metadata changed during publication")
@@ -611,7 +684,7 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
                                    "version_number": number, "name": payload["name"],
                                    "loaders": payload["loaders"],
                                    "game_versions": payload["game_versions"],
-                                   "primary_sha512": CANDIDATE_SHA512,
+                                   "primary_sha512": hashes[number],
                                    "action": action})
     # A retry may discover the first version after a previous upload stopped
     # before the second. Any third version carrying this JAR is a conflict.
@@ -622,7 +695,7 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
     seen_ids = set()
     for version in after:
         same_artifact = any(isinstance(item, dict)
-                            and (item.get("hashes") or {}).get("sha512") == CANDIDATE_SHA512
+                            and (item.get("hashes") or {}).get("sha512") in hashes.values()
                             for item in version.get("files") or [])
         if version.get("version_number") in expected or same_artifact:
             seen_ids.add(version.get("id"))
@@ -650,7 +723,9 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
         receipt_hashes[name] = plan["evidence_sha256"][name]
     receipt = {"project_id": PROJECT_ID, "versions": published_versions,
                "source_revision": SOURCE_REVISION,
-               "candidate_sha512": CANDIDATE_SHA512, "probe_sha512": PROBE_SHA512,
+               "candidate_sha512": CANDIDATE_SHA512,
+               "companion_sha512": COMPANION_SHA512,
+               "probe_sha512": PROBE_SHA512,
                "matrix_sha256": MATRIX_SHA256,
                "purpur_matrix_sha256": purpur_release_evidence.MATRIX_SHA256,
                "version_type": "beta", "status": payloads[0]["status"],
