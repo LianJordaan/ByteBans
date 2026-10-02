@@ -33,6 +33,7 @@ class FakeClient:
         }
         self.new = []
         self.fail_second_once = False
+        self.omit_unlisted = False
 
     def get_project(self):
         return {"id": gate.PROJECT_ID, "status": "approved",
@@ -43,7 +44,16 @@ class FakeClient:
                 {"type": "telemetry", "consent": "opt_in", "data_collected": ["Discord webhook data"]}]
 
     def list_versions(self):
-        return [copy.deepcopy(self.prior)] + copy.deepcopy(self.new)
+        visible_new = [row for row in self.new
+                       if not self.omit_unlisted or row["status"] == "listed"]
+        return [copy.deepcopy(self.prior)] + copy.deepcopy(visible_new)
+
+    def find_version_by_hash(self, sha512):
+        for version in [self.prior, *self.new]:
+            if any((item.get("hashes") or {}).get("sha512") == sha512
+                   for item in version.get("files") or []):
+                return copy.deepcopy(version)
+        return None
 
     def get_version(self, version_id):
         if version_id == gate.PRIOR_VERSION_ID:
@@ -579,6 +589,7 @@ class ReleaseGateTests(unittest.TestCase):
     def test_interrupted_second_upload_resumes_without_duplicate_first(self):
         client = FakeClient(self.jar)
         client.fail_second_once = True
+        client.omit_unlisted = True
         with self.assertRaisesRegex(RuntimeError, "second-version upload interruption"):
             gate.publish(base=self.base, client=client, user_requested_upload=True)
         self.assertEqual(1, client.created)

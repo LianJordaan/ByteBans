@@ -559,15 +559,17 @@ class ModrinthClient:
             raise RuntimeError(f"Modrinth ByteBans disclosure read failed (HTTP {response.status_code})")
         return response.json().get("disclosures", [])
 
-    def _get_v3(self, path: str):
+    def _get_v3(self, path: str, *, missing_ok: bool = False):
         import requests
-        if not path.startswith(("/project/" + PROJECT_ID + "/version", "/version/")):
+        if not path.startswith(("/project/" + PROJECT_ID + "/version", "/version/", "/version_file/")):
             raise ValueError("Unexpected Modrinth v3 read path")
         response = requests.get(
             API_V3 + path,
             headers={"Authorization": self.token, "User-Agent": self.ws.AGENT},
             timeout=30,
         )
+        if response.status_code == 404 and missing_ok:
+            return None
         if not response.ok:
             raise RuntimeError(f"Modrinth ByteBans v3 read failed (HTTP {response.status_code})")
         return response.json()
@@ -579,6 +581,11 @@ class ModrinthClient:
         if not VERSION_ID.fullmatch(version_id):
             raise ValueError("Unexpected Modrinth version ID")
         return self._get_v3("/version/" + version_id)
+
+    def find_version_by_hash(self, sha512: str):
+        if not re.fullmatch(r"[a-f0-9]{128}", sha512):
+            raise ValueError("Unexpected ByteBans SHA-512")
+        return self._get_v3("/version_file/" + sha512, missing_ok=True)
 
     def create_version(self, payload: dict, jar: Path) -> str:
         import requests
@@ -721,6 +728,18 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
     if len(set(hashes.values())) != 2:
         raise ValueError("The two Modrinth versions would upload duplicate JAR bytes")
     matching: dict[str, dict] = {}
+    # Modrinth omits unlisted versions from the project list even when this
+    # token can fetch them by ID or exact file hash. Resolve both frozen JARs
+    # before considering any upload, including a retry after a partial draft.
+    for number, candidate_hash in hashes.items():
+        full = client.find_version_by_hash(candidate_hash)
+        if full is None:
+            continue
+        if full.get("version_number") != number:
+            raise ValueError("Unexpected or duplicate ByteBans version shares a frozen JAR hash")
+        if not _verify_new_version(full, expected[number], artifacts[number]):
+            raise ValueError("A ByteBans version or artifact already exists with different metadata")
+        matching[number] = full
     for version in existing:
         number = version.get("version_number")
         same_artifact = any(
@@ -729,7 +748,7 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
                 for item in version.get("files") or [])
         if number not in expected and not same_artifact:
             continue
-        if number not in expected or number in matching:
+        if number not in expected or (number in matching and matching[number]["id"] != version.get("id")):
             raise ValueError("Unexpected or duplicate ByteBans version conflicts with the frozen candidate")
         full = client.get_version(version["id"])
         if not _verify_new_version(full, expected[number], artifacts[number]):
@@ -800,8 +819,14 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
                             for item in version.get("files") or [])
         if version.get("version_number") in expected or same_artifact:
             seen_ids.add(version.get("id"))
-    if seen_ids != expected_ids:
+    if not seen_ids.issubset(expected_ids):
         raise RuntimeError("Unexpected ByteBans version shares the release number or JAR hash")
+    published_ids = {item["version_number"]: item["version_id"] for item in published_versions}
+    for number, candidate_hash in hashes.items():
+        full = client.find_version_by_hash(candidate_hash)
+        if (full is None or full.get("id") != published_ids[number]
+                or not _verify_new_version(full, expected[number], artifacts[number])):
+            raise RuntimeError("ByteBans uploaded JAR is not discoverable by its exact SHA-512")
     prior_after = _prior_signature(client.get_version(PRIOR_VERSION_ID))
     if prior_after != prior_before:
         raise RuntimeError("Existing ByteBans 1.0.0 metadata changed during publication")
