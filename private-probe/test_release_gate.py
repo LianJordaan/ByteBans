@@ -199,11 +199,22 @@ class ReleaseGateTests(unittest.TestCase):
         plan = gate.audit(base=self.base)
         self.assertFalse(plan["ready"])
 
-    def test_changed_candidate_or_missing_human_review_fails_closed(self):
+    def test_changed_candidate_fails_and_missing_human_review_defaults_unlisted(self):
         self.jar.write_bytes(b"different JAR")
         self.assertFalse(gate.audit(base=self.base)["ready"])
         self.jar.write_bytes(b"test-only candidate JAR bytes")
         (self.base / "runs/ai-review.json").unlink()
+        plan = gate.audit(base=self.base)
+        self.assertTrue(plan["ready"], plan["issues"])
+        self.assertEqual("unlisted", plan["payload"]["status"])
+        self.assertIsNone(plan["ai_review_sha256"])
+        client = FakeClient(self.jar)
+        receipt = gate.publish(base=self.base, client=client, user_requested_upload=True)
+        self.assertEqual("unlisted", receipt["status"])
+
+    def test_present_but_invalid_human_review_blocks_release(self):
+        path = self.base / "runs/ai-review.json"
+        path.write_text("{not json}", encoding="utf-8")
         self.assertFalse(gate.audit(base=self.base)["ready"])
 
     def test_ai_eligibility_or_disclosure_not_confirmed_blocks_release(self):

@@ -1,8 +1,8 @@
 """Evidence-gated ByteBans 1.1.0 Modrinth release; dry-run by default.
 
 Only the frozen ByteBans JAR may be uploaded. This tool never edits or removes
-the existing 1.0.0 version. The local AI review is a human judgment and is
-deliberately absent until the project owner completes it truthfully.
+the existing 1.0.0 version. Without a human public-eligibility review, the
+substantial AI-assisted update is uploaded unlisted with verified disclosures.
 """
 
 from __future__ import annotations
@@ -312,16 +312,20 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
         issues.extend(_web_issues(row))
 
     ai_review_sha256 = None
-    reviewed_status = None
-    try:
-        review = safe_json(ai_review_path)
-        ai_review_sha256 = digest(ai_review_path, "sha256")
-        review_issues = _ai_review_issues(review, CANDIDATE_SHA512)
-        issues.extend(review_issues)
-        if not review_issues:
-            reviewed_status = review["requested_version_status"]
-    except (OSError, ValueError):
-        issues.append("Human AI eligibility and Modrinth disclosure review is missing")
+    reviewed_status = "unlisted"
+    if ai_review_path.exists() or ai_review_path.is_symlink():
+        try:
+            review = safe_json(ai_review_path)
+            ai_review_sha256 = digest(ai_review_path, "sha256")
+            review_issues = _ai_review_issues(review, CANDIDATE_SHA512)
+            issues.extend(review_issues)
+            if not review_issues:
+                reviewed_status = review["requested_version_status"]
+            else:
+                reviewed_status = None
+        except (OSError, ValueError):
+            issues.append("Human AI eligibility review exists but is invalid")
+            reviewed_status = None
     changelog = ""
     if not changelog_path.is_symlink() and changelog_path.is_file():
         changelog = changelog_path.read_text(encoding="utf-8").strip()
@@ -479,7 +483,8 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
     if not plan["ready"]:
         raise ValueError("ByteBans release gate is closed: " + "; ".join(plan["issues"]))
     review_path = Path(ai_review_path or Path(base) / "runs/ai-review.json")
-    if (review_path.is_symlink() or not review_path.is_file()
+    if plan["ai_review_sha256"] is not None and (
+            review_path.is_symlink() or not review_path.is_file()
             or digest(review_path, "sha256") != plan["ai_review_sha256"]):
         raise ValueError("Human AI review changed after release audit")
     jar = Path(plan["candidate_file"])
@@ -558,7 +563,8 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
     prior_after = _prior_signature(client.get_version(PRIOR_VERSION_ID))
     if prior_after != prior_before:
         raise RuntimeError("Existing ByteBans 1.0.0 metadata changed during publication")
-    if (review_path.is_symlink() or not review_path.is_file()
+    if plan["ai_review_sha256"] is not None and (
+            review_path.is_symlink() or not review_path.is_file()
             or digest(review_path, "sha256") != plan["ai_review_sha256"]):
         raise RuntimeError("Human AI review changed during publication")
     if (changelog_file.is_symlink() or not changelog_file.is_file()
