@@ -20,8 +20,10 @@ URL = f"https://api.modrinth.com/v3/project/{PROJECT}/disclosures"
 RECEIPT = HERE / "runs/modrinth-disclosures.json"
 DESIRED = [
     {"type": "ai_content", "uses": ["code", "text"],
-     "note": ("Substantial ByteBans 1.1.0 code, tests, documentation and project-page "
-              "text were made with generative AI. The earlier 1.0.0 release predates this update.")},
+     "note": ("LianJordaan created and wrote the original ByteBans moderation and database code "
+              "and substantially reviewed and revised the 1.1.0 update. An AI assistant generated "
+              "substantial portions of the new 1.1.0 code and tests, and wrote parts of the updated "
+              "documentation, project page and release notes.")},
     {"type": "telemetry", "consent": "opt_in",
      "data_collected": [
          "If an administrator enables Discord notifications and configures a webhook, moderation actions, player names and reasons are sent to that Discord endpoint.",
