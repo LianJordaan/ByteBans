@@ -1,6 +1,6 @@
-"""Run inside a retained ByteBans container's network namespace on the test host.
+"""Probe the ByteBans admin page on a retained remote or local test server.
 
-Usage: nsenter -t <verified-container-pid> -n python3 - <managed-id> <jar-sha512>
+Remote usage: nsenter -t <verified-container-pid> -n python3 - <managed-id> <jar-sha512>
 The script reads the private token file locally and never prints it.
 """
 
@@ -23,10 +23,12 @@ def check(condition, message):
         raise AssertionError(message)
 
 
-def main(instance_id, expected_sha512):
+def main(instance_id, expected_sha512, *, plugin_folder=None,
+         base="http://127.0.0.1:8765", check_posix_permissions=True):
     check(re.fullmatch(r"mw-[a-f0-9]{16}", instance_id) is not None, "Invalid managed ID")
     check(re.fullmatch(r"[a-f0-9]{128}", expected_sha512) is not None, "Invalid JAR hash")
-    folder = Path("/opt/modrinth-workspace/instances") / instance_id / "data/plugins"
+    folder = (Path(plugin_folder) if plugin_folder is not None
+              else Path("/opt/modrinth-workspace/instances") / instance_id / "data/plugins")
     check(folder.is_dir() and not folder.is_symlink(), "Instance plugin folder missing")
     matching = [path for path in folder.glob("*.jar")
                 if path.is_file() and not path.is_symlink()
@@ -34,11 +36,11 @@ def main(instance_id, expected_sha512):
     check(len(matching) == 1, "Frozen candidate JAR hash did not match")
     token_file = folder / "ByteBans/admin-web-token.txt"
     check(token_file.is_file() and not token_file.is_symlink(), "Admin token file missing")
-    check(stat.S_IMODE(token_file.stat().st_mode) == 0o600, "Admin token is not mode 0600")
+    if check_posix_permissions:
+        check(stat.S_IMODE(token_file.stat().st_mode) == 0o600, "Admin token is not mode 0600")
     token = token_file.read_text(encoding="utf-8").strip()
     check(len(token) >= 43, "Admin token is too short")
 
-    base = "http://127.0.0.1:8765"
     opener = build_opener(ProxyHandler({}), HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
     def request(path, fields=None, headers=None):
@@ -103,12 +105,14 @@ def main(instance_id, expected_sha512):
                    ("removenote", 0, "WEB:SmokeAdmin")],
           "Undo did not atomically close the note and retain its audit entry")
 
-    print(json.dumps({"status": "pass", "instance_id": instance_id,
-                      "candidate_sha512": expected_sha512,
-                      "checks": ["loopback_login_page", "host_restriction", "wrong_token_denied",
-                                 "authenticated_login", "csrf_rejection_no_write",
-                                 "note_create_with_actor", "note_undo_with_audit"],
-                      "subject": subject, "note_id": note_id}, sort_keys=True))
+    result = {"status": "pass", "instance_id": instance_id,
+              "candidate_sha512": expected_sha512,
+              "checks": ["loopback_login_page", "host_restriction", "wrong_token_denied",
+                         "authenticated_login", "csrf_rejection_no_write",
+                         "note_create_with_actor", "note_undo_with_audit"],
+              "subject": subject, "note_id": note_id}
+    print(json.dumps(result, sort_keys=True))
+    return result
 
 
 if __name__ == "__main__":

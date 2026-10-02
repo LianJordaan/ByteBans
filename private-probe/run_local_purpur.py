@@ -13,7 +13,7 @@ import time
 from urllib.request import Request, urlopen
 
 from run_local_matrix import (CANDIDATE, HELPER, INSTANCES, JAVA, RUNS,
-                              SOURCE_REVISION, USER_AGENT, sha)
+                              SOURCE_REVISION, USER_AGENT, seed_mojang_cache, sha)
 import run_matrix
 
 
@@ -88,8 +88,9 @@ def run(entry: dict, mode: str, folder: Path) -> dict:
     plugins = instance / "plugins"
     plugins.mkdir()
     shutil.copy2(jar, instance / jar.name)
-    shutil.copy2(CANDIDATE, plugins / "000-00eb24302593.jar")
-    shutil.copy2(HELPER, plugins / "001-8d326289e3b4.jar")
+    seed_mojang_cache(version, instance)
+    shutil.copy2(CANDIDATE, plugins / "000-300a632568e3.jar")
+    shutil.copy2(HELPER, plugins / "001-d6029de86b40.jar")
     (instance / "eula.txt").write_text("eula=true\n", encoding="utf-8")
     (instance / "server.properties").write_text(
         "server-ip=127.0.0.1\nserver-port=27244\n"
@@ -104,9 +105,9 @@ def run(entry: dict, mode: str, folder: Path) -> dict:
                "purpur_sha256_expected": entry["sha256"],
                "purpur_sha256_actual": sha(instance / jar.name, "sha256"),
                "source_revision": SOURCE_REVISION, "candidate_sha512": sha(CANDIDATE, "sha512"),
-               "candidate_sha512_actual": sha(plugins / "000-00eb24302593.jar", "sha512"),
+               "candidate_sha512_actual": sha(plugins / "000-300a632568e3.jar", "sha512"),
                "probe_sha512": sha(HELPER, "sha512"),
-               "probe_sha512_actual": sha(plugins / "001-8d326289e3b4.jar", "sha512"),
+               "probe_sha512_actual": sha(plugins / "001-d6029de86b40.jar", "sha512"),
                "java": 21, "java_executable": str(JAVA[21]),
                "connection_mode": "standalone_" + mode,
                "instance_id": identity, "instance_path": str(instance),

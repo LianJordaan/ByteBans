@@ -152,22 +152,24 @@ def horizontal_displacement(before, after):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reuse', help='Reuse a stopped matching ByteBans private target by managed ID')
-    parser.add_argument('--jar', type=Path, help='Exact ByteBans candidate JAR (default: target/ByteBans-1.1.0-SNAPSHOT.jar)')
-    parser.add_argument('--source-revision', help='Git revision that produced --jar, if different from current HEAD')
+    parser.add_argument('--jar', type=Path, help='Exact ByteBans candidate JAR (default: frozen/release/ByteBans-1.1.0.jar)')
+    parser.add_argument('--source-revision', help='Git revision that produced --jar (default: frozen source revision, or current HEAD for a custom JAR)')
     args = parser.parse_args()
     config = json.loads((WORKSPACE / 'config' / 'test_servers.json').read_text(encoding='utf-8'))
     if config.get('eula_accepted') is not True:
         raise SystemExit('Minecraft test-server EULA acceptance is not configured')
-    jar = args.jar.resolve() if args.jar else BYTEBANS / 'target' / 'ByteBans-1.1.0-SNAPSHOT.jar'
-    artifact = sha_artifact(jar, 'ByteBans frozen development candidate')
-    helper = sha_artifact(Path(__file__).parent / 'target' / 'bytebans-private-probe-1.0.0.jar',
+    jar = args.jar.resolve() if args.jar else Path(__file__).parent / 'frozen/release/ByteBans-1.1.0.jar'
+    artifact = sha_artifact(jar, 'ByteBans frozen 1.1.0 beta candidate')
+    helper = sha_artifact(Path(__file__).parent / 'frozen/release/bytebans-private-probe-1.0.0.jar',
                           'Separate ByteBans private server-state probe')
     profile = json.load(urlopen('https://api.minecraftservices.com/minecraft/profile/lookup/name/'
                                 + config['operator'], timeout=20))
     run_folder = Path(__file__).parent / 'runs' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ-offline')
     run_folder.mkdir(parents=True, exist_ok=False)
-    revision = args.source_revision or subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=BYTEBANS,
-                                                                text=True).strip()
+    revision = (args.source_revision or
+                ('70d3daff4b0af93338d95b207ee596c5e52a43fc' if args.jar is None else
+                 subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=BYTEBANS,
+                                         text=True).strip()))
     if not re.fullmatch(r'[a-f0-9]{40}', revision):
         raise SystemExit('Source revision must be a full Git SHA-1')
     evidence = {'source_revision': revision,

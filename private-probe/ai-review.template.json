@@ -1,9 +1,12 @@
 {
   "project_id": "ysEBBeJv",
-  "candidate_sha512": "00eb2430259370247f16a67624ee917a6e8f94a2a5995a77aab4e0d982010235330e814a0b8d08b9e2f0261be276967bc166ef5066ceccba7b7c0a4a7193e5bc",
+  "candidate_sha512": "300a632568e37a22bd8d16ef311625f8bc53db9ce87bab4f2571400952b061df5da3e9aabb56142e62360874c0c2d15696b8afb755054608f8e373106eac15a8",
   "substantial_ai_generated_code": true,
   "ai_written_release_text": true,
+  "requested_version_status": null,
   "primarily_ai_derived": null,
+  "significant_human_original_content_confirmed": null,
+  "owner_authorized_unlisted": null,
   "modrinth_ai_code_disclosure_verified": null,
   "modrinth_ai_text_disclosure_verified": null,
   "opt_in_discord_data_disclosure_verified": null,

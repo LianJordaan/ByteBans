@@ -98,8 +98,8 @@ def markdown(summary):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--jar", type=Path, default=HERE / "frozen/feature/ByteBans-1.1.0-SNAPSHOT.jar")
-    parser.add_argument("--probe-jar", type=Path, default=HERE / "target/bytebans-private-probe-1.0.0.jar")
+    parser.add_argument("--jar", type=Path, default=HERE / "frozen/release/ByteBans-1.1.0.jar")
+    parser.add_argument("--probe-jar", type=Path, default=HERE / "frozen/release/bytebans-private-probe-1.0.0.jar")
     args = parser.parse_args()
     summary = summarize(args.jar, args.probe_jar)
     output = HERE / "runs" / ("summary-" + summary["candidate_sha512"][:12])

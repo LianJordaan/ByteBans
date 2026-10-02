@@ -33,15 +33,17 @@ PRIOR_GAME_VERSIONS = (
 PRIOR_LOADERS = ("bukkit", "paper", "purpur", "spigot")
 VERSION_NUMBER = "1.1.0"
 VERSION_NAME = "ByteBans 1.1.0 beta"
-SOURCE_REVISION = "bb2e229d581a56549b774aa92e11fefa703a431a"
+SOURCE_REVISION = "70d3daff4b0af93338d95b207ee596c5e52a43fc"
 CANDIDATE_SHA512 = (
-    "00eb2430259370247f16a67624ee917a6e8f94a2a5995a77aab4e0d982010235330e814a0b8d08b9e2f0261be276967bc166ef5066ceccba7b7c0a4a7193e5bc"
+    "300a632568e37a22bd8d16ef311625f8bc53db9ce87bab4f2571400952b061df5da3e9aabb56142e62360874c0c2d15696b8afb755054608f8e373106eac15a8"
 )
 PROBE_SHA512 = (
-    "8d326289e3b410afbf7565b8c41b720552c20e8d2d7996a6a6e43c59ad4d2dce41a213fdd73a0a956c16fbf5c2abe49dabef94926e5c102bfc80f2ed887284dc"
+    "d6029de86b401b0f350802b1e38a43a025e9b2ae509fe07e9446980f8ed70687978cbfbb95e59353770cd7a984392f1b716dca0b061fd3d3725afeafb6b39a26"
 )
 MATRIX_SHA256 = "350ecab8c78baaf7f9b7ec643e48d62c9f3a8f7b18b2f166e1c3bb5f619bb8b2"
 PAPER_1214_SHA256 = "5ee4f542f628a14c644410b08c94ea42e772ef4d29fe92973636b6813d4eaffc"
+CLIENT_VERSIONS = ("1.21", "1.21.4", "1.21.11")
+CLIENT_SCRIPT_SHA256 = "b794fb13e5d43fdc565cf6db0ccd4503a54f2ecfdd522260fe600d24eb08dbef"
 VERSION_ID = re.compile(r"[A-Za-z0-9]{8,16}\Z")
 INSTANCE_ID = re.compile(r"mw-[a-f0-9]{16}\Z")
 HEX64 = re.compile(r"[a-f0-9]{64}\Z")
@@ -88,15 +90,19 @@ def _latest_receipt(folder: Path, pattern: str, candidate_sha: str):
     return max(matches, key=lambda item: item[0]) if matches else None
 
 
-def _client_issues(row: dict) -> list[str]:
+def _client_issues(row: dict, target: dict) -> list[str]:
     issues = []
     if (row.get("status") != "pass" or row.get("stopped") is not True
             or row.get("source_revision") != SOURCE_REVISION
             or row.get("candidate_sha512") != CANDIDATE_SHA512
             or row.get("probe_sha512") != PROBE_SHA512
-            or row.get("version") != "1.21.4" or row.get("paper_build") != 232
-            or row.get("paper_sha256_actual") != PAPER_1214_SHA256
-            or row.get("java") != 21 or row.get("connection_mode") != "standalone_offline"
+            or row.get("client_sha256") != CLIENT_SCRIPT_SHA256
+            or row.get("version") != target["version"]
+            or row.get("paper_build") != target["paper_build"]
+            or row.get("paper_sha256_actual") != target["paper_sha256"]
+            or row.get("java") != target["java"]
+            or row.get("connection_mode") != "standalone_offline"
+            or row.get("port") != 27242
             or not INSTANCE_ID.fullmatch(str(row.get("instance_id", "")))):
         issues.append("Real offline-client run does not match the frozen candidate and Paper pin")
     checks = row.get("checks") or {}
@@ -146,18 +152,28 @@ def _web_issues(row: dict) -> list[str]:
 
 
 def _ai_review_issues(row: dict, candidate_sha: str) -> list[str]:
-    """Require human judgment; do not infer eligibility from test results or line counts."""
+    """Require a truthful human choice of listed or explicitly authorized unlisted."""
     if (row.get("candidate_sha512") != candidate_sha
             or row.get("project_id") != PROJECT_ID
             or row.get("substantial_ai_generated_code") is not True
             or row.get("ai_written_release_text") is not True
-            or row.get("primarily_ai_derived") is not False
             or row.get("modrinth_ai_code_disclosure_verified") is not True
             or row.get("modrinth_ai_text_disclosure_verified") is not True
             or row.get("opt_in_discord_data_disclosure_verified") is not True
             or not isinstance(row.get("reviewer"), str) or len(row["reviewer"].strip()) < 3
             or not isinstance(row.get("review_basis"), str) or len(row["review_basis"].strip()) < 80):
         return ["Human AI eligibility/disclosure review is incomplete or contradicts known provenance"]
+    visibility = row.get("requested_version_status")
+    if visibility == "listed":
+        if (row.get("primarily_ai_derived") is not False
+                or row.get("significant_human_original_content_confirmed") is not True):
+            return ["Public listing requires a human finding of significant original work and a project that is not primarily AI-derived"]
+    elif visibility == "unlisted":
+        if (row.get("owner_authorized_unlisted") is not True
+                or type(row.get("primarily_ai_derived")) is not bool):
+            return ["An unlisted version requires the owner's explicit choice and an honest AI derivation assessment"]
+    else:
+        return ["Human review must choose listed or unlisted version visibility"]
     try:
         reviewed = datetime.fromisoformat(row["reviewed_at"].replace("Z", "+00:00"))
     except (KeyError, AttributeError, ValueError):
@@ -181,7 +197,7 @@ def _synthetic_issues(row: dict, target: dict) -> list[str]:
         issues.append("Attempt identity, source revision or allocated server is not pinned")
     probe = row.get("probe") or {}
     if (not isinstance(probe, dict) or probe.get("probe_revision") != "1"
-            or probe.get("bytebans_version") != "1.1.0-SNAPSHOT"
+            or probe.get("bytebans_version") != "1.1.0"
             or target["version"] not in str(probe.get("server", ""))):
         issues.append("Live probe revision or plugin runtime identity is missing")
     logs = row.get("logs")
@@ -215,9 +231,9 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
     runs = base / "runs"
     ai_review_path = Path(ai_review_path or runs / "ai-review.json")
     changelog_path = Path(changelog_path or base / "release-changelog.md")
-    candidate = base / "frozen/feature/ByteBans-1.1.0-SNAPSHOT.jar"
-    helper = base / "target/bytebans-private-probe-1.0.0.jar"
-    manifest_path = base / "frozen/feature/manifest.json"
+    candidate = base / "frozen/release/ByteBans-1.1.0.jar"
+    helper = base / "frozen/release/bytebans-private-probe-1.0.0.jar"
+    manifest_path = base / "frozen/release/manifest.json"
     matrix_path = base / "matrix.json"
     issues: list[str] = []
     target_issues: dict[str, list[str]] = {}
@@ -277,13 +293,16 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
     if len(qualified_versions) != 15:
         issues.append("Not all 15 Paper versions passed in both direct server modes")
 
-    client = _latest_receipt(runs, "*-offline/result.json", CANDIDATE_SHA512)
-    if client is None:
-        issues.append("Real offline Minecraft client receipt is missing")
-    else:
-        _, path, row = client
-        receipt_paths["real_offline_client"] = str(path)
-        issues.extend(_client_issues(row))
+    for version in CLIENT_VERSIONS:
+        target = next((item for item in targets if item["version"] == version
+                       and item["connection_mode"] == "standalone_offline"), None)
+        client = _latest_receipt(runs, f"*-local-client-{version}/result.json", CANDIDATE_SHA512)
+        if target is None or client is None:
+            issues.append(f"Paper {version} real offline Minecraft client receipt is missing")
+        else:
+            _, path, row = client
+            receipt_paths["real_offline_client_" + version] = str(path)
+            issues.extend(f"Paper {version}: {problem}" for problem in _client_issues(row, target))
     web = _latest_receipt(runs, "*-admin-web/result.json", CANDIDATE_SHA512)
     if web is None:
         issues.append("Authenticated admin web HTTP/SQLite receipt is missing")
@@ -293,10 +312,14 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
         issues.extend(_web_issues(row))
 
     ai_review_sha256 = None
+    reviewed_status = None
     try:
         review = safe_json(ai_review_path)
         ai_review_sha256 = digest(ai_review_path, "sha256")
-        issues.extend(_ai_review_issues(review, CANDIDATE_SHA512))
+        review_issues = _ai_review_issues(review, CANDIDATE_SHA512)
+        issues.extend(review_issues)
+        if not review_issues:
+            reviewed_status = review["requested_version_status"]
     except (OSError, ValueError):
         issues.append("Human AI eligibility and Modrinth disclosure review is missing")
     changelog = ""
@@ -307,12 +330,12 @@ def audit(*, base: Path | None = None, ai_review_path: Path | None = None,
         issues.append("Release changelog is missing or lacks compatibility and AI provenance disclosure")
 
     payload = None
-    if len(qualified_versions) == 15 and changelog:
+    if len(qualified_versions) == 15 and changelog and reviewed_status:
         payload = {"project_id": PROJECT_ID, "name": VERSION_NAME,
                    "version_number": VERSION_NUMBER, "changelog": changelog,
                    "game_versions": qualified_versions, "loaders": ["paper"],
                    "version_type": "beta", "featured": False,
-                   "status": "listed", "environment": "dedicated_server_only",
+                   "status": reviewed_status, "environment": "dedicated_server_only",
                    "dependencies": [], "file_parts": ["primary"], "primary_file": "primary"}
     evidence_hashes = {}
     for name, name_path in receipt_paths.items():
@@ -424,7 +447,7 @@ def _verify_new_version(version: dict, payload: dict, jar: Path) -> bool:
         and version.get("version_number") == VERSION_NUMBER
         and version.get("name") == VERSION_NAME
         and version.get("version_type") == "beta"
-        and version.get("status") == "listed"
+        and version.get("status") == payload["status"]
         and version.get("environment") == "dedicated_server_only"
         and version.get("changelog") == payload["changelog"]
         and isinstance(versions, list) and len(versions) == len(payload["game_versions"])
@@ -519,6 +542,7 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
                 or previous.get("matrix_sha256") != MATRIX_SHA256
                 or previous.get("changelog_sha256") != plan["changelog_sha256"]
                 or previous.get("ai_review_sha256") != plan["ai_review_sha256"]
+                or previous.get("status") != payload["status"]
                 or previous.get("game_versions") != payload["game_versions"]
                 or previous.get("loaders") != ["paper"]):
             raise ValueError("Existing local ByteBans publication receipt conflicts with Modrinth")
@@ -554,7 +578,7 @@ def publish(*, user_requested_upload=False, base: Path | None = None,
                "version_number": VERSION_NUMBER, "source_revision": SOURCE_REVISION,
                "candidate_sha512": CANDIDATE_SHA512, "probe_sha512": PROBE_SHA512,
                "matrix_sha256": MATRIX_SHA256, "game_versions": payload["game_versions"],
-               "loaders": ["paper"], "version_type": "beta",
+               "loaders": ["paper"], "version_type": "beta", "status": payload["status"],
                "changelog_sha256": plan["changelog_sha256"],
                "ai_review_sha256": plan["ai_review_sha256"],
                "evidence_sha256": receipt_hashes, "prior_version": prior_after,

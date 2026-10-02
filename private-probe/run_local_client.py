@@ -15,7 +15,7 @@ import subprocess
 import time
 
 from run_local_matrix import (CANDIDATE, HELPER, INSTANCES, JAVA, MATRIX, RUNS,
-                              SOURCE_REVISION, get_paper, sha)
+                              SOURCE_REVISION, get_paper, seed_mojang_cache, sha)
 from run_offline import Client, assert_true, horizontal_displacement
 
 
@@ -104,13 +104,14 @@ def run(version: str) -> dict:
         "checks": {},
     }
     shutil.copy2(paper, instance / paper.name)
+    seed_mojang_cache(version, instance)
     plugin_dir = instance / "plugins"
     plugin_dir.mkdir()
-    shutil.copy2(CANDIDATE, plugin_dir / "000-00eb24302593.jar")
-    shutil.copy2(HELPER, plugin_dir / "001-8d326289e3b4.jar")
-    assert_true(sha(plugin_dir / "000-00eb24302593.jar", "sha512") == evidence["candidate_sha512"],
+    shutil.copy2(CANDIDATE, plugin_dir / "000-300a632568e3.jar")
+    shutil.copy2(HELPER, plugin_dir / "001-d6029de86b40.jar")
+    assert_true(sha(plugin_dir / "000-300a632568e3.jar", "sha512") == evidence["candidate_sha512"],
                 "Installed ByteBans hash changed")
-    assert_true(sha(plugin_dir / "001-8d326289e3b4.jar", "sha512") == evidence["probe_sha512"],
+    assert_true(sha(plugin_dir / "001-d6029de86b40.jar", "sha512") == evidence["probe_sha512"],
                 "Installed private helper hash changed")
     (instance / "eula.txt").write_text("eula=true\n", encoding="utf-8")
     (instance / "server.properties").write_text(
@@ -262,7 +263,7 @@ def run(version: str) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("version", choices=("1.21", "1.21.11"))
+    parser.add_argument("version", choices=("1.21", "1.21.4", "1.21.11"))
     args = parser.parse_args()
     result = run(args.version)
     if result["status"] != "pass" or result["stopped"] is not True:

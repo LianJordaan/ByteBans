@@ -17,8 +17,8 @@ def sha512(path):
 
 
 def main():
-    jar = BYTEBANS / 'target' / 'ByteBans-1.1.0-SNAPSHOT.jar'
-    probe_jar = Path(__file__).parent / 'target' / 'bytebans-private-probe-1.0.0.jar'
+    jar = BYTEBANS / 'private-probe/frozen/release/ByteBans-1.1.0.jar'
+    probe_jar = Path(__file__).parent / 'frozen/release/bytebans-private-probe-1.0.0.jar'
     result = remote_result(HOST, INSTANCE_ID)
     if result is None:
         raise SystemExit('No private probe result; leave server running for diagnosis')

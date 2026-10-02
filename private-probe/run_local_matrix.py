@@ -27,15 +27,15 @@ import summarize
 HERE = Path(__file__).resolve().parent
 WORKSPACE = HERE.parents[2]
 MATRIX = json.loads((HERE / "matrix.json").read_text(encoding="utf-8"))
-CANDIDATE = HERE / "frozen/feature/ByteBans-1.1.0-SNAPSHOT.jar"
-HELPER = HERE / "target/bytebans-private-probe-1.0.0.jar"
+CANDIDATE = HERE / "frozen/release/ByteBans-1.1.0.jar"
+HELPER = HERE / "frozen/release/bytebans-private-probe-1.0.0.jar"
 CACHE = WORKSPACE / "testing/bytebans/cache"
 INSTANCES = WORKSPACE / "testing/bytebans/live"
 RUNS = HERE / "runs"
-SOURCE_REVISION = "bb2e229d581a56549b774aa92e11fefa703a431a"
+SOURCE_REVISION = "70d3daff4b0af93338d95b207ee596c5e52a43fc"
 USER_AGENT = "ModrinthWorkspace/1.0 (https://github.com/LianJordaan/ByteBans)"
-EXPECTED_CANDIDATE_SHA512 = "00eb2430259370247f16a67624ee917a6e8f94a2a5995a77aab4e0d982010235330e814a0b8d08b9e2f0261be276967bc166ef5066ceccba7b7c0a4a7193e5bc"
-EXPECTED_HELPER_SHA512 = "8d326289e3b410afbf7565b8c41b720552c20e8d2d7996a6a6e43c59ad4d2dce41a213fdd73a0a956c16fbf5c2abe49dabef94926e5c102bfc80f2ed887284dc"
+EXPECTED_CANDIDATE_SHA512 = "300a632568e37a22bd8d16ef311625f8bc53db9ce87bab4f2571400952b061df5da3e9aabb56142e62360874c0c2d15696b8afb755054608f8e373106eac15a8"
+EXPECTED_HELPER_SHA512 = "d6029de86b401b0f350802b1e38a43a025e9b2ae509fe07e9446980f8ed70687978cbfbb95e59353770cd7a984392f1b716dca0b061fd3d3725afeafb6b39a26"
 JAVA = {
     21: Path(r"C:\Program Files\Java\jdk-21\bin\java.exe"),
     25: Path(r"C:\Users\lianj\.gradle\jdks\eclipse_adoptium-25-amd64-windows.2\bin\java.exe"),
@@ -85,6 +85,30 @@ def get_paper(target: dict, download_missing: bool) -> Path:
     return local
 
 
+def seed_mojang_cache(version: str, instance: Path) -> None:
+    """Reuse a completed local world's verified-by-startup vanilla server download.
+
+    Paper's bootstrap downloads a fresh Mojang JAR for every isolated world.
+    Reusing one from a server where the private probe completed avoids another
+    network fetch without changing the pinned Paper build or either plugin JAR.
+    """
+    cache_name = f"mojang_{version}.jar"
+    for prior in INSTANCES.glob("mw-*"):
+        probe = prior / "plugins/ByteBansPrivateProbe/results.json"
+        source = prior / "cache" / cache_name
+        if not probe.is_file() or not source.is_file() or source.stat().st_size < 20_000_000:
+            continue
+        try:
+            outcome = json.loads(probe.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if outcome.get("minecraft") == version and outcome.get("passed") is True:
+            cache = instance / "cache"
+            cache.mkdir(exist_ok=True)
+            shutil.copy2(source, cache / cache_name)
+            return
+
+
 def run(target: dict, folder: Path, download_missing: bool) -> dict:
     candidate_sha = sha(CANDIDATE, "sha512")
     helper_sha = sha(HELPER, "sha512")
@@ -112,10 +136,11 @@ def run(target: dict, folder: Path, download_missing: bool) -> dict:
         shutil.copy2(paper, instance / paper.name)
         plugins = instance / "plugins"
         plugins.mkdir()
-        installed_candidate = plugins / "000-00eb24302593.jar"
-        installed_helper = plugins / "001-8d326289e3b4.jar"
+        installed_candidate = plugins / "000-300a632568e3.jar"
+        installed_helper = plugins / "001-d6029de86b40.jar"
         shutil.copy2(CANDIDATE, installed_candidate)
         shutil.copy2(HELPER, installed_helper)
+        seed_mojang_cache(target["version"], instance)
         result["candidate_sha512_actual"] = sha(installed_candidate, "sha512")
         result["probe_sha512_actual"] = sha(installed_helper, "sha512")
         (instance / "eula.txt").write_text("eula=true\n", encoding="utf-8")

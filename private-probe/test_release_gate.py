@@ -69,10 +69,10 @@ class ReleaseGateTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
-        self.jar = self.base / "frozen/feature/ByteBans-1.1.0-SNAPSHOT.jar"
-        self.helper = self.base / "target/bytebans-private-probe-1.0.0.jar"
+        self.jar = self.base / "frozen/release/ByteBans-1.1.0.jar"
+        self.helper = self.base / "frozen/release/bytebans-private-probe-1.0.0.jar"
         self.jar.parent.mkdir(parents=True)
-        self.helper.parent.mkdir(parents=True)
+        self.helper.parent.mkdir(parents=True, exist_ok=True)
         self.jar.write_bytes(b"test-only candidate JAR bytes")
         self.helper.write_bytes(b"test-only probe JAR bytes")
         self.candidate_sha = hashlib.sha512(self.jar.read_bytes()).hexdigest()
@@ -86,7 +86,7 @@ class ReleaseGateTests(unittest.TestCase):
         for item in self.patches:
             item.start()
             self.addCleanup(item.stop)
-        write_json(self.base / "frozen/feature/manifest.json", {
+        write_json(self.base / "frozen/release/manifest.json", {
             "source_revision": self.source, "sha512": self.candidate_sha,
         })
         shutil.copyfile(gate.HERE / "matrix.json", self.base / "matrix.json")
@@ -104,7 +104,10 @@ class ReleaseGateTests(unittest.TestCase):
             "project_id": gate.PROJECT_ID, "candidate_sha512": self.candidate_sha,
             "substantial_ai_generated_code": True,
             "ai_written_release_text": True,
+            "requested_version_status": "listed",
             "primarily_ai_derived": False,
+            "significant_human_original_content_confirmed": True,
+            "owner_authorized_unlisted": None,
             "modrinth_ai_code_disclosure_verified": True,
             "modrinth_ai_text_disclosure_verified": True,
             "opt_in_discord_data_disclosure_verified": True,
@@ -117,7 +120,7 @@ class ReleaseGateTests(unittest.TestCase):
         version = target["version"]
         probe = {"probe_revision": "1", "minecraft": version,
                  "server": "Paper " + version, "java": str(target["java"]) + ".0.1",
-                 "bytebans_version": "1.1.0-SNAPSHOT", "passed": True,
+                 "bytebans_version": "1.1.0", "passed": True,
                  "cases": {case: True for case in gate.summarize.REQUIRED_CASES}}
         row = {"target": target, "source_revision": self.source,
                "candidate_sha512": self.candidate_sha, "candidate_sha512_actual": self.candidate_sha,
@@ -145,14 +148,19 @@ class ReleaseGateTests(unittest.TestCase):
                   "unfreeze_restores_real_movement": {
                       "server_horizontal_blocks": 2.0,
                       "server_before": {"bypass": False}}}
-        write_json(self.base / "runs/20261001T220100Z-offline/result.json", {
-            "source_revision": self.source, "candidate_sha512": self.candidate_sha,
-            "probe_sha512": self.helper_sha, "status": "pass", "stopped": True,
-            "instance_id": "mw-1111111111111111", "version": "1.21.4",
-            "paper_build": 232, "paper_sha256_actual": gate.PAPER_1214_SHA256,
-            "java": 21, "connection_mode": "standalone_offline",
-            "finished_at": "2026-10-01T22:05:00+00:00", "checks": checks,
-        })
+        for index, version in enumerate(gate.CLIENT_VERSIONS):
+            target = next(item for item in self.targets if item["version"] == version
+                          and item["connection_mode"] == "standalone_offline")
+            write_json(self.base / f"runs/20261001T22010{index}Z-local-client-{version}/result.json", {
+                "source_revision": self.source, "candidate_sha512": self.candidate_sha,
+                "probe_sha512": self.helper_sha, "client_sha256": gate.CLIENT_SCRIPT_SHA256,
+                "status": "pass", "stopped": True, "port": 27242,
+                "instance_id": "mw-1111111111111111", "version": version,
+                "paper_build": target["paper_build"],
+                "paper_sha256_actual": target["paper_sha256"],
+                "java": target["java"], "connection_mode": "standalone_offline",
+                "finished_at": "2026-10-01T22:05:00+00:00", "checks": checks,
+            })
 
     def _write_web(self):
         write_json(self.base / "runs/20261001T220200Z-admin-web/result.json", {
@@ -171,7 +179,10 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertTrue(plan["ready"], plan["issues"])
         self.assertEqual(15, len(plan["qualified_versions"]))
         self.assertEqual(["paper"], plan["payload"]["loaders"])
+        self.assertEqual("listed", plan["payload"]["status"])
         self.assertEqual(30, len([key for key in plan["receipts"] if key.startswith("paper-")]))
+        self.assertEqual(3, len([key for key in plan["receipts"]
+                                 if key.startswith("real_offline_client_")]))
 
     def test_missing_failed_and_mismatched_targets_fail_closed(self):
         target = self.targets[0]
@@ -204,6 +215,33 @@ class ReleaseGateTests(unittest.TestCase):
             with self.subTest(field=field):
                 write_json(path, {**original, field: value})
                 self.assertFalse(gate.audit(base=self.base)["ready"])
+
+    def test_explicit_unlisted_review_can_plan_private_visibility(self):
+        path = self.base / "runs/ai-review.json"
+        review = json.loads(path.read_text(encoding="utf-8"))
+        review.update({"requested_version_status": "unlisted",
+                       "primarily_ai_derived": True,
+                       "significant_human_original_content_confirmed": False,
+                       "owner_authorized_unlisted": True})
+        write_json(path, review)
+        plan = gate.audit(base=self.base)
+        self.assertTrue(plan["ready"], plan["issues"])
+        self.assertEqual("unlisted", plan["payload"]["status"])
+        client = FakeClient(self.jar)
+        receipt = gate.publish(base=self.base, client=client, user_requested_upload=True)
+        self.assertEqual("unlisted", receipt["status"])
+        self.assertEqual("listed", client.prior["status"])
+
+    def test_unlisted_requires_explicit_owner_choice(self):
+        path = self.base / "runs/ai-review.json"
+        review = json.loads(path.read_text(encoding="utf-8"))
+        review.update({"requested_version_status": "unlisted",
+                       "primarily_ai_derived": True,
+                       "owner_authorized_unlisted": False})
+        write_json(path, review)
+        plan = gate.audit(base=self.base)
+        self.assertFalse(plan["ready"])
+        self.assertIsNone(plan["payload"])
 
     def test_latest_failed_retry_supersedes_earlier_pass(self):
         target = self.targets[0]
@@ -275,7 +313,7 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertFalse((self.base / "runs/publication.json").exists())
 
     def test_changed_published_versions_or_hashes_write_no_receipt(self):
-        for field in ("game_versions", "files", "changelog"):
+        for field in ("game_versions", "files", "changelog", "status"):
             with self.subTest(field=field):
                 client = FakeClient(self.jar)
                 original = client.get_version
@@ -287,6 +325,8 @@ class ReleaseGateTests(unittest.TestCase):
                             result[field] = result[field][:-1]
                         elif field == "files":
                             result[field][0]["hashes"]["sha512"] = "0" * 128
+                        elif field == "status":
+                            result[field] = "unlisted"
                         else:
                             result[field] = "Modified after upload"
                     return result
